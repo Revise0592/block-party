@@ -318,6 +318,9 @@ func copyWorldFolder(src, dst string) error {
 // restoreDeletedWorld puts back a world from a "before-delete" backup, next
 // to the others. The server keeps running.
 func (s *Server) restoreDeletedWorld(archive *os.File) error {
+	if err := s.EditBlocked(); err != nil {
+		return err
+	}
 	staging, err := os.MkdirTemp(s.m.serversDir(), ".upload-"+s.meta.ID+"-")
 	if err != nil {
 		return err

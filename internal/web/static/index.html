@@ -101,6 +101,7 @@
       <div id="update-banner" class="banner info" hidden>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5"></path><path d="M4 19h16"></path></svg>
         <p id="update-banner-text" class="grow"></p>
+        <a class="button" href="#/upkeep" id="update-auto-link" data-owner-only>Do it overnight</a>
         <button type="button" id="update-all">Update all</button>
       </div>
       <p id="empty" class="card muted" hidden></p>
@@ -177,6 +178,12 @@
       <p class="muted">Each server's backups, schedule and restore are on its Backups tab.</p>
       <p id="backups-none" class="card muted" hidden>None of your servers' backups are yours to see. Ask the owner.</p>
       <div id="backups-overview" class="server-table"></div>
+      <section class="card" id="deleted-box" data-owner-only hidden>
+        <h2>Deleted servers</h2>
+        <p class="muted small">Their backups are kept, including a final one from when they were deleted. Bringing one back downloads Bedrock again and puts its world and settings back.</p>
+        <p id="deleted-error" class="error" hidden></p>
+        <ul id="deleted-list" class="people"></ul>
+      </section>
     </section>
 
     <!-- Help -->
@@ -210,6 +217,7 @@
         <a href="#/guide" data-owner-only><b>Setup guide</b><span class="muted">Your gamertag, how consoles join, your servers, and a checklist of what's left.</span></a>
         <a href="#/import" data-owner-only><b>Import servers</b><span class="muted">Copy servers in from Crafty Controller or another folder.</span></a>
         <a href="#/outside" data-owner-only><b>Friends outside the house</b><span class="muted">Let friends who don't live here join the servers you choose.</span></a>
+        <a href="#/upkeep" data-owner-only><b>Overnight updates and restarts</b><span class="muted">Keep servers on the newest Bedrock without anyone pressing Update.</span></a>
         <a href="#/people" data-owner-only><b>People</b><span class="muted">Accounts for your kids, and which servers each one can use.</span></a>
         <a href="#/account"><b>Appearance and password</b><span class="muted">Light or dark, change your password, sign out.</span></a>
       </div>
@@ -372,6 +380,32 @@
       </section>
     </section>
 
+    <!-- Overnight upkeep (owner only) -->
+    <section id="view-upkeep" class="view narrow" hidden>
+      <div class="crumbs"><a href="#/help">Help</a> /</div>
+      <h1>Overnight updates and restarts</h1>
+      <p class="muted">Each night, starting at the time below, the panel looks after the servers for three hours. It only touches a server nobody is playing on; one with players is tried again every minute until the three hours are up, then the next night.</p>
+      <form id="upkeep-form" class="card">
+        <label class="check">
+          <input type="checkbox" id="upkeep-update">
+          <span>Update servers when a new Bedrock version is out</span>
+        </label>
+        <p class="muted small">Each is backed up first, and started again if it was running. Friends' games update themselves, and can't join a server that's behind, so this keeps everyone playing. Servers set to keep their version, and preview servers, are skipped.</p>
+        <label class="check">
+          <input type="checkbox" id="upkeep-restart">
+          <span>Restart running servers every night</span>
+        </label>
+        <p class="muted small">A fresh start clears out slowdowns from long uptimes. A server that was updated that night isn't restarted again.</p>
+        <label class="inline">Starting at <input type="time" id="upkeep-at" required></label>
+        <p class="muted small" id="upkeep-zone"></p>
+        <div class="row">
+          <button type="submit" class="primary">Save</button>
+          <span id="upkeep-saved" class="muted small" hidden>Saved.</span>
+        </div>
+        <p id="upkeep-error" class="error" hidden></p>
+      </form>
+    </section>
+
     <!-- Account -->
     <section id="view-account" class="view narrow" hidden>
       <h1>Signed in as <span id="account-name"></span></h1>
@@ -526,6 +560,15 @@
           </div>
         </form>
 
+        <section class="card" id="hold-card" data-care>
+          <h3>Updates</h3>
+          <label class="check">
+            <input type="checkbox" id="hold-version">
+            <span>Keep this server on its Bedrock version (overnight updates skip it)</span>
+          </label>
+          <p class="muted small" id="hold-help"></p>
+        </section>
+
         <form id="settings-form">
           <div id="settings-groups"></div>
           <div id="settings-bar" class="savebar" hidden>
@@ -544,6 +587,12 @@
             <button id="raw-reload" type="button">Reload</button>
           </div>
         </details>
+
+        <section class="card danger-zone" data-owner-only>
+          <h3>Delete this server</h3>
+          <p class="muted small">It's stopped and a final backup is made; then it's removed from the panel. Its backups are kept, so you can bring it back from the Backups page. Only you can do this.</p>
+          <button type="button" id="delete-server" class="danger">Delete server…</button>
+        </section>
       </div>
 
       <div id="pane-players" hidden>

@@ -84,7 +84,7 @@ func (p BackupPlan) due(last, now time.Time) bool {
 // Backup is one backup file.
 type Backup struct {
 	Name string    `json:"name"`
-	Kind string    `json:"kind"` // scheduled, manual, before-update, before-restore, before-delete
+	Kind string    `json:"kind"` // scheduled, manual, before-update, before-restore, before-delete, final
 	Time time.Time `json:"time"`
 	Size int64     `json:"size"`
 	Full bool      `json:"full"` // holds the server files too
@@ -111,7 +111,7 @@ var (
 	errBackupRunning = errors.New("a backup or restore is already running for this server")
 	errBadBackupName = errors.New("no such backup")
 	// The file name: <id>-YYYYMMDD-HHMMSS-<kind>.tar.gz
-	reBackupName = regexp.MustCompile(`^(.+)-(\d{8}-\d{6})-(scheduled|manual|before-update|before-restore|before-delete)\.tar\.gz$`)
+	reBackupName = regexp.MustCompile(`^(.+)-(\d{8}-\d{6})-(scheduled|manual|before-update|before-restore|before-delete|final)\.tar\.gz$`)
 )
 
 // scheduleTick is how often the schedule is checked; tests shorten it.
@@ -1056,6 +1056,16 @@ func (m *Manager) RunBackupSchedule() {
 						return
 					}
 					s.scheduledBackup(now)
+				}
+				// Overnight upkeep after the backups, which it would
+				// otherwise interrupt (an update backs up first anyway).
+				plan := m.NightlyPlan()
+				latest, _ := m.LatestRelease()
+				for _, s := range m.all() {
+					if m.ctx.Err() != nil {
+						return
+					}
+					s.nightly(now, plan, latest)
 				}
 			}
 		}

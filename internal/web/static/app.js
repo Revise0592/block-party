@@ -199,6 +199,7 @@ function renderDashboard(list, force) {
     $("update-banner-text").replaceChildren(el("b", {}, `Bedrock ${latestVersion} is out. `),
       `${behind.length} server${behind.length === 1 ? " can" : "s can"} update. Each one is backed up first and started again if it was running.`);
     $("update-all").textContent = behind.length === 1 ? "Update it" : `Update all ${behind.length}`;
+    checkNightly();
   }
 
   // Backups card
@@ -330,6 +331,7 @@ async function refresh() {
         location.hash = "#/"; // the owner changed what this account may do
       } else if (s) {
         renderDetailHead(s);
+        if (tab === "settings") renderHold();
         if (tab === "overview") renderOverviewStatus(s);
       } else {
         resetSettings(); // it's gone (a failed import, say): nothing to save
@@ -378,8 +380,8 @@ function route() {
   }
   let next = parts[0] || "servers";
   if (next === "joining") next = "help";
-  if (!["servers", "backups", "help", "import", "add", "guide", "people", "outside", "account", "server"].includes(next)) next = "servers";
-  if ((["import", "guide", "people", "outside"].includes(next) && !me.owner) || (next === "add" && !me.canAdd)) {
+  if (!["servers", "backups", "help", "import", "add", "guide", "people", "outside", "upkeep", "account", "server"].includes(next)) next = "servers";
+  if ((["import", "guide", "people", "outside", "upkeep"].includes(next) && !me.owner) || (next === "add" && !me.canAdd)) {
     location.hash = "#/"; // not for this account
     return;
   }
@@ -432,6 +434,8 @@ function route() {
   }
   if (next === "people") loadPeople();
   if (next === "outside") loadOutside(false);
+  if (next === "upkeep") loadUpkeep();
+  if (next === "backups" && me.owner) loadDeleted();
   if (next === "guide") openGuide(1);
   if (next === "help") fillJoinInfo();
   refresh();
@@ -441,7 +445,7 @@ function setView(v) {
   view = v;
   for (const sec of document.querySelectorAll(".view")) sec.hidden = sec.id !== "view-" + v;
   // Pages without their own menu entry light up the one they're reached from.
-  const navKey = { server: "servers", add: "servers", import: "servers", guide: "help", outside: "help", people: me.owner ? "people" : "account" }[v] || v;
+  const navKey = { server: "servers", add: "servers", import: "servers", guide: "help", outside: "help", upkeep: "help", people: me.owner ? "people" : "account" }[v] || v;
   for (const a of document.querySelectorAll("[data-nav]")) {
     if (a.dataset.nav === navKey) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   }
@@ -759,6 +763,7 @@ async function loadSettings() {
     settingsFor = id;
     for (const k of Object.keys(edits)) delete edits[k];
     $("rename-name").value = settingsView.name;
+    renderHold();
     renderSettings();
     showSettingsError(null);
   } catch (err) { showSettingsError(err); }
@@ -979,6 +984,7 @@ let planDirty = false;
 const kindLabels = {
   scheduled: "Automatic", manual: "Made by hand",
   "before-update": "Before an update", "before-restore": "Before a restore", "before-delete": "Before deleting a world",
+  final: "When the server was deleted",
 };
 
 function resetBackups() {
@@ -1102,6 +1108,116 @@ $("plan-form").addEventListener("submit", (ev) => {
   });
 });
 $("backup-now").addEventListener("click", () => backupsCall(() => post(sid() + "/backups")));
+
+// ---- keeping a version, deleting a server ----
+
+function renderHold() {
+  const s = serverList.find((x) => x.id === selected);
+  $("hold-card").hidden = access(s) < CARE;
+  if (!s) return;
+  $("hold-version").checked = !!s.holdVersion;
+  $("hold-help").textContent = s.preview
+    ? "This is a preview server, which overnight updates always skip."
+    : (s.holdVersion ? `It stays on ${s.version ? "Bedrock " + s.version : "its current version"} until you press Update or untick this.` : "When overnight updates are on, it's updated to each new Bedrock version while nobody is playing.");
+}
+
+$("hold-version").addEventListener("change", async (ev) => {
+  const box = ev.currentTarget;
+  const id = selected;
+  try {
+    await post(`/api/servers/${encodeURIComponent(id)}/hold-version`, { hold: box.checked });
+    await refresh();
+    if (id === selected) renderHold();
+  } catch (err) { box.checked = !box.checked; showSettingsError(err); }
+});
+
+$("delete-server").addEventListener("click", async (ev) => {
+  const b = ev.currentTarget;
+  const s = serverList.find((x) => x.id === selected);
+  if (!s) return;
+  const typed = prompt(`Delete ${s.name}? It's stopped, a final backup is made, and it's removed from the panel. You can bring it back from the Backups page.\n\nType the server's name to confirm:`);
+  if (typed === null) return;
+  if (typed.trim().toLowerCase() !== s.name.trim().toLowerCase()) { alert("That isn't the server's name, so nothing was deleted."); return; }
+  b.disabled = true;
+  b.textContent = "Stopping and backing up…";
+  try {
+    await del(`/api/servers/${encodeURIComponent(s.id)}`);
+    resetSettings();
+    location.hash = "#/backups";
+  } catch (err) { showSettingsError(err); }
+  b.disabled = false;
+  b.textContent = "Delete server…";
+  refresh();
+});
+
+// ---- deleted servers (Backups page, owner) ----
+
+async function loadDeleted() {
+  try {
+    const list = await api("/api/deleted-servers");
+    if (view !== "backups") return;
+    $("deleted-box").hidden = list.length === 0;
+    $("deleted-list").replaceChildren(...list.map((d) => row(d.name,
+      `Deleted ${whenShort(d.deleted).toLowerCase()} · ${d.backups} backup${d.backups === 1 ? "" : "s"}, ${mb1(d.size)} · port ${d.port}`,
+      d.canBringBack ? btn("Bring back", async (ev) => {
+        const b = ev.currentTarget;
+        if (!confirm(`Bring back ${d.name}? Bedrock is downloaded again and its world and settings are put back. It stays stopped until you start it.`)) return;
+        b.disabled = true;
+        try {
+          const st = await post(`/api/deleted-servers/${encodeURIComponent(d.id)}/bring-back`);
+          await refresh();
+          location.hash = serverHref(st.id, "console");
+        } catch (err) { showDeletedError(err); b.disabled = false; }
+      }, "primary") : null,
+      btn("Remove backups", async () => {
+        if (!confirm(`Remove all of ${d.name}'s backups for good? It can't be brought back after this.`)) return;
+        try { await del(`/api/deleted-servers/${encodeURIComponent(d.id)}`); showDeletedError(null); } catch (err) { showDeletedError(err); }
+        loadDeleted();
+      }, "danger"))));
+    showDeletedError(null);
+  } catch (err) { showDeletedError(err); }
+}
+
+function showDeletedError(err) {
+  $("deleted-error").textContent = err ? err.message : "";
+  $("deleted-error").hidden = !err;
+}
+
+// ---- overnight upkeep (owner) ----
+
+async function loadUpkeep() {
+  try {
+    const n = await api("/api/nightly");
+    if (view !== "upkeep") return;
+    $("upkeep-update").checked = n.autoUpdate;
+    $("upkeep-restart").checked = n.dailyRestart;
+    $("upkeep-at").value = n.at;
+    $("upkeep-saved").hidden = true;
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    $("upkeep-zone").textContent = `The panel's clock is used (see the Backups tab for its time zone; this browser is on ${zone}). The window lasts three hours.`;
+    $("upkeep-error").hidden = true;
+  } catch (err) { $("upkeep-error").textContent = err.message; $("upkeep-error").hidden = false; }
+}
+
+$("upkeep-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  try {
+    await api("/api/nightly", { method: "PUT", body: JSON.stringify({
+      autoUpdate: $("upkeep-update").checked, dailyRestart: $("upkeep-restart").checked, at: $("upkeep-at").value }) });
+    $("upkeep-saved").hidden = false;
+    $("upkeep-error").hidden = true;
+    nightlyOn = null;
+  } catch (err) { $("upkeep-error").textContent = err.message; $("upkeep-error").hidden = false; }
+});
+for (const id of ["upkeep-update", "upkeep-restart", "upkeep-at"]) $(id).addEventListener("input", () => { $("upkeep-saved").hidden = true; });
+
+// nightlyOn: whether overnight updates are on (owner), for the update banner.
+let nightlyOn = null;
+async function checkNightly() {
+  if (!me.owner || nightlyOn !== null) return;
+  try { nightlyOn = (await api("/api/nightly")).autoUpdate; } catch (_) { return; }
+  $("update-auto-link").hidden = nightlyOn;
+}
 
 // ---- add-ons tab ----
 
@@ -1829,6 +1945,7 @@ function signedOut() {
   settings = {};
   me = { owner: false, canAdd: false, name: "" };
   people = null;
+  nightlyOn = null;
   outsideDirty = false;
   dashOutsideAt = 0;
   guideInfo = null;

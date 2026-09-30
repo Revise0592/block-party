@@ -83,6 +83,12 @@ type Meta struct {
 	// Outside is true while the server is open to friends outside the
 	// house (it also needs outside access on in the panel).
 	Outside bool `json:"outside,omitempty"`
+	// HoldVersion keeps the server on its Bedrock version: overnight
+	// updates skip it.
+	HoldVersion bool `json:"holdVersion,omitempty"`
+	// LastNightly is the night (its date) overnight upkeep last acted on
+	// the server, so a panel restart doesn't do it twice.
+	LastNightly string `json:"lastNightly,omitempty"`
 }
 
 const metaFile = ".blockheads.json"
@@ -132,7 +138,7 @@ func (m *Manager) Load() error {
 			_ = os.RemoveAll(filepath.Join(m.serversDir(), e.Name()))
 			continue
 		}
-		if strings.HasPrefix(e.Name(), ".staging-") || strings.HasPrefix(e.Name(), ".download-") || strings.HasPrefix(e.Name(), ".import-") || strings.HasPrefix(e.Name(), ".upload-") {
+		if strings.HasPrefix(e.Name(), ".staging-") || strings.HasPrefix(e.Name(), ".download-") || strings.HasPrefix(e.Name(), ".import-") || strings.HasPrefix(e.Name(), ".upload-") || strings.HasPrefix(e.Name(), ".deleted-") {
 			// Left over from an install that was interrupted.
 			_ = os.RemoveAll(filepath.Join(m.serversDir(), e.Name()))
 			continue
@@ -376,7 +382,10 @@ func (m *Manager) newID(name string) string {
 	id := base
 	for i := 2; ; i++ {
 		_, taken := m.servers[id]
-		if _, err := os.Stat(filepath.Join(m.serversDir(), id)); !taken && os.IsNotExist(err) {
+		_, err := os.Stat(filepath.Join(m.serversDir(), id))
+		// A deleted server's backups keep its name, so it can come back.
+		_, berr := os.Stat(m.backupsDir(id))
+		if !taken && os.IsNotExist(err) && os.IsNotExist(berr) {
 			return id
 		}
 		id = fmt.Sprintf("%s-%d", base, i)

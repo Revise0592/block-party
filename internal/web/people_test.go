@@ -218,8 +218,8 @@ func TestAKidWhoAddsAServerTakesCareOfIt(t *testing.T) {
 	if w := call(h, "POST", "/api/servers", `{"name":"Bad","acceptEula":true,"ownerGamertag":"bad\"tag"}`, sam); w.Code != 400 {
 		t.Errorf("bad gamertag: %d", w.Code)
 	}
-	// Nobody but the owner can delete servers; there's no route at all yet.
-	if w := call(h, "DELETE", "/api/servers/"+st.ID, "", sam); w.Code != 405 && w.Code != 404 {
+	// Nobody but the owner can delete servers.
+	if w := call(h, "DELETE", "/api/servers/"+st.ID, "", sam); w.Code != 403 {
 		t.Errorf("delete: %d", w.Code)
 	}
 	waitFor(t, func() bool { return s.mgr.List()[0].State != "installing" })
@@ -354,5 +354,40 @@ func TestAddonRoutes(t *testing.T) {
 	}
 	if w := call(h, "GET", "/api/servers/ava/worlds/..%2F..%2Fx/download", "", ava); w.Code == 200 {
 		t.Error("downloaded a path")
+	}
+}
+
+func TestOnlyTheOwnerDeletesServers(t *testing.T) {
+	s, dir := newTestServer(t)
+	addTestServer(t, s, dir, "ava", "Ava's Server", 19140)
+	h := s.routes()
+	owner := ownerCookie(s)
+	call(h, "POST", "/api/users", `{"username":"Ava","password":"ava password 1","canAdd":true}`, owner)
+	call(h, "PUT", "/api/users/Ava", `{"grants":{"ava":"care"}}`, owner)
+	ava := sessionFrom(t, call(h, "POST", "/api/auth/login", `{"username":"Ava","password":"ava password 1"}`))
+	for _, c := range []struct {
+		method, path, body string
+		want               int
+	}{
+		{"DELETE", "/api/servers/ava", "", 403},
+		{"GET", "/api/deleted-servers", "", 403},
+		{"PUT", "/api/nightly", `{"autoUpdate":true,"at":"04:00"}`, 403},
+		{"POST", "/api/servers/ava/hold-version", `{"hold":true}`, 200},
+	} {
+		if w := call(h, c.method, c.path, c.body, ava); w.Code != c.want {
+			t.Errorf("%s %s: %d, want %d (%s)", c.method, c.path, w.Code, c.want, w.Body)
+		}
+	}
+	if w := call(h, "PUT", "/api/nightly", `{"autoUpdate":true,"at":"4:05"}`, owner); w.Code != 200 || !strings.Contains(w.Body.String(), `"at":"04:05"`) {
+		t.Errorf("nightly: %d %s", w.Code, w.Body)
+	}
+	if w := call(h, "DELETE", "/api/servers/ava", "", owner); w.Code != 200 {
+		t.Fatalf("delete: %d %s", w.Code, w.Body)
+	}
+	if w := call(h, "GET", "/api/servers", "", ava); strings.Contains(w.Body.String(), `"ava"`) {
+		t.Errorf("still listed: %s", w.Body)
+	}
+	if w := call(h, "GET", "/api/deleted-servers", "", owner); !strings.Contains(w.Body.String(), `"name":"Ava's Server"`) {
+		t.Errorf("deleted list: %s", w.Body)
 	}
 }

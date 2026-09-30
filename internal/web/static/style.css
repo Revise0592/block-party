@@ -108,7 +108,7 @@ label.check input { min-height: 0; width: 18px; height: 18px; margin-top: 2px; f
 label.inline { display: flex; flex-direction: row; align-items: center; gap: 8px; margin: 0; font-size: 14px; }
 label.inline input { width: 12em; }
 label.inline input.port { width: 6.5em; }
-label.inline input[type=time] { width: 8em; }
+label.inline input[type=time] { width: 9.5em; }
 label.check.inline input { width: 18px; }
 label.switch { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; margin: 0; font-size: 14px; }
 label.switch input { min-height: 0; width: 18px; height: 18px; accent-color: var(--accent); }
@@ -541,3 +541,6 @@ table.ports .ok { color: var(--ok); }
 .people .tag.warn { color: var(--warn); border-color: currentColor; }
 .people li.off .who > span:first-child { color: var(--muted); }
 label.button { margin: 0; }
+
+/* ---- Deleting servers ---- */
+.danger-zone { border-color: var(--bad-line); }

@@ -50,6 +50,11 @@ Switch players can join without extra apps.
   UPnP (or lists the forwards to add by hand), and writes an invite that tells
   a friend how to join from a PC, phone or console. See
   [Friends outside the house](#friends-outside-the-house).
+- **Overnight updates and restarts.** Optionally, the panel updates servers
+  to each new Bedrock version, and restarts them, in a window each night, but
+  only when nobody is playing. See [Overnight updates](#overnight-updates-and-restarts).
+- **Deleting servers**, for the owner only, with a final backup, and a way to
+  bring a deleted server back. See [Deleting a server](#deleting-a-server).
 - **Worlds and add-ons.** Install add-ons (`.mcaddon` and `.mcpack` files
   from CurseForge, MCPEDL or a creator's site), turn them on and off, upload
   worlds exported from the game, switch worlds, and download a world to play
@@ -198,6 +203,34 @@ the allowlist.
 Consoles outside only see the servers open to them in the list, and are sent
 to your hostname. The panel re-checks everything every minute, and closes the
 forwards it made when it stops.
+
+### Overnight updates and restarts
+
+Under **Help → Overnight updates and restarts** (owner only) choose:
+
+- **Update servers when a new Bedrock version is out.** Each server is backed
+  up first and started again if it was running. Consoles and phones update
+  Minecraft on their own and can't join a server that's behind, so this
+  keeps friends playing.
+- **Restart running servers every night.**
+- **Starting at** a time (the panel's clock, so set `TZ`). For three hours
+  from then, the panel does each server's upkeep once, but only while nobody
+  is playing on it; a server with players is tried again every minute until
+  the window ends.
+
+Preview servers are never updated this way, and a server can be kept on its
+version with **Keep this server on its Bedrock version** on its Settings tab
+(anyone who takes care of it can change that).
+
+### Deleting a server
+
+Only the owner can delete a server: **Delete server** at the bottom of its
+Settings tab, typing its name to confirm. It's stopped, a final backup of its
+worlds and settings is made, and it's removed. Its backups are kept, and the
+**Backups** page lists it under **Deleted servers**: **Bring back** puts it
+back (same name, and the same port if it's free), downloading Bedrock again;
+**Remove backups** deletes them for good. A deleted server's name isn't
+given to a new server while its backups are kept.
 
 ### Worlds and add-ons
 

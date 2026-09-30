@@ -57,6 +57,8 @@ type Status struct {
 	Waiting int `json:"waiting"`
 	// LastBackup is when the newest backup was made (only filled in by List).
 	LastBackup *time.Time `json:"lastBackup,omitempty"`
+	// HoldVersion: overnight updates skip it.
+	HoldVersion bool `json:"holdVersion,omitempty"`
 	// Outside is true while it's open to friends outside the house.
 	Outside bool `json:"outside,omitempty"`
 }
@@ -117,6 +119,8 @@ type Server struct {
 	// when it started), which may differ from server.properties after a
 	// change that hasn't been applied by a restart.
 	playing           string
+	deleted           bool // removed by DeleteServer; nothing more happens to it
+	startedAt         time.Time
 	lbTime, lbChecked time.Time // cached newest backup time (see lastBackup)
 }
 
@@ -157,7 +161,7 @@ func (s *Server) Status() Status {
 		ID: s.meta.ID, Name: s.meta.Name, Type: s.meta.Type, Version: s.meta.Version,
 		Port: s.meta.Port, State: s.state, Message: s.message, AutoStart: s.meta.AutoStart,
 		Players: []Player{}, Preview: s.meta.Preview, Waiting: len(s.attempts),
-		Outside: s.meta.Outside,
+		Outside: s.meta.Outside, HoldVersion: s.meta.HoldVersion,
 	}
 	for _, p := range s.players {
 		st.Players = append(st.Players, p)
@@ -182,6 +186,10 @@ func (s *Server) writeMeta(dir string) error {
 	s.saveMu.Lock()
 	defer s.saveMu.Unlock()
 	s.mu.Lock()
+	if s.deleted {
+		s.mu.Unlock()
+		return errDeleted // its folder is gone (or belongs to a server brought back)
+	}
 	b, _ := json.MarshalIndent(s.meta, "", "  ")
 	s.mu.Unlock()
 	path := filepath.Join(dir, metaFile)
@@ -366,6 +374,7 @@ func (s *Server) startLocked() error {
 	pw.Close()
 	commands := make(chan string, commandQueue)
 	s.cmd, s.commands, s.exited, s.stopping = cmd, commands, make(chan struct{}), false
+	s.startedAt = time.Now()
 	s.playing = ""
 	if p, err := readProperties(s.propertiesPath()); err == nil {
 		s.playing, _ = p.get("level-name")
@@ -502,6 +511,9 @@ func (s *Server) Stop() error {
 func (s *Server) EditBlocked() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.deleted {
+		return errDeleted
+	}
 	switch s.state {
 	case StateImporting:
 		return ErrImporting

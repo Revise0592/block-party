@@ -170,6 +170,7 @@ func (s *Server) routes() http.Handler {
 	s.peopleRoutes(mux)
 	s.outsideRoutes(mux)
 	s.addonRoutes(mux)
+	s.lifecycleRoutes(mux)
 	return s.secure(mux)
 }
 
@@ -457,6 +458,9 @@ func (s *Server) console(w http.ResponseWriter, r *http.Request) {
 		case <-keepAlive.C:
 			if p := s.who(r); p == nil || p.Level(id) < levelRun {
 				return // signed out, or no longer allowed
+			}
+			if cur, ok := s.mgr.Get(id); !ok || cur != srv {
+				return // deleted (or deleted and brought back)
 			}
 			fmt.Fprint(w, ": keep-alive\n\n")
 			flusher.Flush()

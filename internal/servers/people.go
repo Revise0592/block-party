@@ -112,6 +112,8 @@ type Settings struct {
 	OwnerGamertag string `json:"ownerGamertag,omitempty"`
 	// SetupDone is set when the owner finishes (or skips) the setup guide.
 	SetupDone bool `json:"setupDone,omitempty"`
+	// Nightly is overnight updates and restarts (nil: off).
+	Nightly *Nightly `json:"nightly,omitempty"`
 }
 
 func (m *Manager) settingsPath() string { return filepath.Join(m.opts.DataDir, "panel-settings.json") }
