@@ -330,6 +330,9 @@ func (s *Server) createServer(w http.ResponseWriter, r *http.Request) {
 		Preview    bool   `json:"preview"`
 		AcceptEULA bool   `json:"acceptEula"`
 		Owner      string `json:"ownerGamertag"`
+		Edition    string `json:"edition"`  // "bedrock" (default) or "java"
+		JavaName   string `json:"javaName"` // Java: the adder's Minecraft Java username
+		MemoryMB   int    `json:"memoryMB"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, errors.New("bad request"))
@@ -342,6 +345,22 @@ func (s *Server) createServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if !req.AcceptEULA {
 		writeError(w, http.StatusBadRequest, errors.New("accept the Minecraft EULA to download the server"))
+		return
+	}
+	if req.Edition == servers.TypeJava {
+		var names []string
+		if n := strings.TrimSpace(req.JavaName); n != "" {
+			names = append(names, n)
+			if p.Owner && n != s.mgr.Settings().OwnerJavaName {
+				_ = s.mgr.SetOwnerJavaName(n) // remembered for the next Java server
+			}
+		}
+		st, err := s.mgr.CreateJava(req.Name, req.MemoryMB, names...)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		s.finishCreate(w, r, p, st)
 		return
 	}
 	var extra []string
@@ -363,6 +382,11 @@ func (s *Server) createServer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	s.finishCreate(w, r, p, st)
+}
+
+// finishCreate gives a new server to the kid who added it and answers.
+func (s *Server) finishCreate(w http.ResponseWriter, r *http.Request, p *auth.Principal, st servers.Status) {
 	if !p.Owner {
 		// Whoever adds a server looks after it (but can't delete it).
 		if err := s.auth.Grant(p.Name, st.ID, auth.RoleCare); err != nil {

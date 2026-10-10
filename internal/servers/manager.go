@@ -32,6 +32,11 @@ type Options struct {
 	StopTimeout time.Duration // how long a server gets to save and stop; 30s if zero
 	Log         *slog.Logger
 	ImportDir   string // other panels' server folders, mounted read-only; "" if none
+	// Where Java servers come from (defaults if empty; tests change them).
+	PaperAPI       string
+	AdoptiumAPI    string
+	MojangVersions string
+	MojangProfiles string
 	// Notify, when set, is told about things the owner may want to hear
 	// about (crashes, join attempts, failed backups…). It must not block.
 	Notify func(notify.Event)
@@ -57,6 +62,8 @@ type Manager struct {
 	settingsMu sync.Mutex
 	imports    importState
 	latest     versionCache
+	paper      paperCache
+	javaMu     sync.Mutex // one Java runtime install at a time
 }
 
 // Meta is what the panel remembers about a server between restarts.
@@ -90,6 +97,15 @@ type Meta struct {
 	// HoldVersion keeps the server on its Bedrock version: overnight
 	// updates skip it.
 	HoldVersion bool `json:"holdVersion,omitempty"`
+	// Java servers: the Paper build, the Java version it runs on, and how
+	// much memory it may use (MB; 0 means the default).
+	Build     int `json:"build,omitempty"`
+	JavaMajor int `json:"javaMajor,omitempty"`
+	MemoryMB  int `json:"memoryMB,omitempty"`
+	// JavaPending are allowlist and operator changes to make by command
+	// the next time a Java server starts (its accounts couldn't be looked
+	// up while it was stopped).
+	JavaPending []JavaPending `json:"javaPending,omitempty"`
 	// LastNightly is the night (its date) overnight upkeep last acted on
 	// the server, so a panel restart doesn't do it twice.
 	LastNightly string `json:"lastNightly,omitempty"`
@@ -104,6 +120,17 @@ func New(opts Options) *Manager {
 	}
 	if opts.StopTimeout == 0 {
 		opts.StopTimeout = 30 * time.Second
+	}
+	for _, d := range []struct {
+		v   *string
+		def string
+	}{
+		{&opts.PaperAPI, DefaultPaperAPI}, {&opts.AdoptiumAPI, DefaultAdoptiumAPI},
+		{&opts.MojangVersions, DefaultMojangVersion}, {&opts.MojangProfiles, DefaultMojangProfile},
+	} {
+		if *d.v == "" {
+			*d.v = d.def
+		}
 	}
 	if opts.Log == nil {
 		opts.Log = slog.Default()
@@ -126,6 +153,12 @@ func (m *Manager) Load() error {
 	entries, err := os.ReadDir(m.serversDir())
 	if err != nil {
 		return err
+	}
+	// Java downloads that were cut short.
+	if left, _ := filepath.Glob(filepath.Join(m.runtimesDir(), ".*")); len(left) > 0 {
+		for _, l := range left {
+			_ = os.RemoveAll(l)
+		}
 	}
 	// A restore that was interrupted: put back what was moved aside.
 	for _, e := range entries {
@@ -302,6 +335,9 @@ func (m *Manager) Joinable() []Joinable {
 	var out []Joinable
 	for _, s := range m.all() {
 		st := s.Status()
+		if st.Type == TypeJava {
+			continue // Bedrock consoles can't join Java servers (yet)
+		}
 		out = append(out, Joinable{Name: st.Name, Port: st.Port, Running: st.State == StateRunning})
 	}
 	return out
@@ -315,13 +351,32 @@ var errNameInvalid = errors.New("give the server a name of 1 to 40 characters")
 // The owner's gamertag (a panel setting) and any gamertags passed in extra
 // are put on the new server's allowlist and made operators.
 func (m *Manager) Create(name string, preview bool, extra ...string) (Status, error) {
+	return m.create(TypeBedrock, name, preview, 0, extra)
+}
+
+// CreateJava sets up a new Java (Paper) server, downloading Paper and the
+// Java it needs. names (Java usernames) are put on its allowlist and made
+// operators.
+func (m *Manager) CreateJava(name string, memoryMB int, names ...string) (Status, error) {
+	return m.create(TypeJava, name, false, memoryMB, names)
+}
+
+func (m *Manager) create(typ, name string, preview bool, memoryMB int, extra []string) (Status, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || len([]rune(name)) > 40 || strings.ContainsAny(name, "\r\n\t") {
 		return Status{}, errNameInvalid
 	}
+	if typ == TypeJava && memoryMB != 0 && (memoryMB < 512 || memoryMB > 32768) {
+		return Status{}, errors.New("pick between 512 MB and 32 GB of memory")
+	}
 	var ops []string
 	for _, gt := range extra {
-		gt, err := cleanGamertag(gt)
+		var err error
+		if typ == TypeJava {
+			gt, err = cleanJavaName(gt)
+		} else {
+			gt, err = cleanGamertag(gt)
+		}
 		if err != nil {
 			return Status{}, err
 		}
@@ -340,7 +395,7 @@ func (m *Manager) Create(name string, preview bool, extra ...string) (Status, er
 		m.mu.Unlock()
 		return Status{}, err
 	}
-	meta := Meta{ID: id, Name: name, Type: "bedrock", Preview: preview, Port: port, PortV6: port + 1, Created: time.Now().UTC(), AutoStart: true}
+	meta := Meta{ID: id, Name: name, Type: typ, Preview: preview, Port: port, PortV6: port + 1, Created: time.Now().UTC(), AutoStart: true, MemoryMB: memoryMB}
 	s := newServer(m, meta)
 	s.state = StateInstalling
 	s.busy = true

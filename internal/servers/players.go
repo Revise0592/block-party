@@ -32,6 +32,7 @@ type PlayersView struct {
 	Operators        []ListedName  `json:"operators"`
 	Attempts         []JoinAttempt `json:"attempts"`
 	Running          bool          `json:"running"`
+	Java             bool          `json:"java,omitempty"` // names are Minecraft Java usernames
 }
 
 // ListedName is a player on the allowlist or an operator.
@@ -165,6 +166,9 @@ func (s *Server) allowlistEnabled() bool {
 
 // Players returns the Players page for this server.
 func (s *Server) Players() (PlayersView, error) {
+	if s.isJava() {
+		return s.javaPlayers()
+	}
 	s.filesMu.Lock()
 	defer s.filesMu.Unlock()
 	// Empty lists, never nil: the page expects [] rather than null.
@@ -231,6 +235,18 @@ func (s *Server) Players() (PlayersView, error) {
 // AllowlistAdd adds a player to the allowlist. xuid may be empty; Bedrock
 // fills it in when they join.
 func (s *Server) AllowlistAdd(name, xuid string) error {
+	if s.isJava() {
+		pending, err := s.javaChange(name, "allow")
+		if err == nil {
+			s.dismissAttempt(name)
+			if pending {
+				s.say(name + " will be added to the allowlist when the server next starts (their account couldn't be looked up now).")
+			} else {
+				s.say(name + " was added to the allowlist.")
+			}
+		}
+		return err
+	}
 	name, err := cleanGamertag(name)
 	if err != nil {
 		return err
@@ -268,6 +284,13 @@ func (s *Server) AllowlistAdd(name, xuid string) error {
 // AllowlistRemove takes a player off the allowlist. Someone who's playing
 // stays until they leave; use Kick to remove them now.
 func (s *Server) AllowlistRemove(name string) error {
+	if s.isJava() {
+		_, err := s.javaChange(name, "unallow")
+		if err == nil {
+			s.say(name + " was removed from the allowlist.")
+		}
+		return err
+	}
 	s.filesMu.Lock()
 	allow, err := readJSONList[allowEntry](s.allowlistPath())
 	removed := false
@@ -303,6 +326,9 @@ func (s *Server) SetAllowlistEnabled(on bool) error {
 	if on {
 		value, command = "true", "allowlist on"
 	}
+	if s.isJava() {
+		command = strings.Replace(command, "allowlist", "whitelist", 1)
+	}
 	// server.properties is also rewritten under s.mu when the server starts,
 	// so edit it under s.mu too (after filesMu, the usual order).
 	s.filesMu.Lock()
@@ -315,7 +341,10 @@ func (s *Server) SetAllowlistEnabled(on bool) error {
 	path := filepath.Join(s.dir(), "server.properties")
 	p, err := readProperties(path)
 	if err == nil {
-		if !p.setIfPresent("white-list", value) {
+		if s.isJava() {
+			p.set("white-list", value)
+			p.set("enforce-whitelist", value) // kick players who aren't on it
+		} else if !p.setIfPresent("white-list", value) {
 			p.set("allow-list", value)
 		} else {
 			p.setIfPresent("allow-list", value)
@@ -339,6 +368,17 @@ func (s *Server) SetAllowlistEnabled(on bool) error {
 // OpAdd makes a player an operator. It returns pending=true if they haven't
 // joined yet, in which case it's applied on their first join.
 func (s *Server) OpAdd(name string) (pending bool, err error) {
+	if s.isJava() {
+		pending, err = s.javaChange(name, "op")
+		if err == nil {
+			if pending {
+				s.say(name + " will be made an operator when the server next starts.")
+			} else {
+				s.say(name + " is now an operator.")
+			}
+		}
+		return pending, err
+	}
 	name, err = cleanGamertag(name)
 	if err != nil {
 		return false, err
@@ -379,6 +419,13 @@ func (s *Server) OpAdd(name string) (pending bool, err error) {
 // OpRemove takes operator away. key is a gamertag, or an XUID for operators
 // the panel doesn't know by name.
 func (s *Server) OpRemove(key string) error {
+	if s.isJava() {
+		_, err := s.javaChange(key, "deop")
+		if err == nil {
+			s.say(key + " is no longer an operator.")
+		}
+		return err
+	}
 	if s.removePendingOp(key) {
 		s.say(key + " won't be made an operator.")
 		return nil
@@ -488,12 +535,20 @@ func (s *Server) onJoin(name, xuid string) {
 
 // Kick disconnects a player.
 func (s *Server) Kick(name, reason string) error {
-	name, err := cleanGamertag(name)
+	var err error
+	if s.isJava() {
+		name, err = cleanJavaName(name)
+	} else {
+		name, err = cleanGamertag(name)
+	}
 	if err != nil {
 		return err
 	}
 	reason = oneLine(reason, 100)
 	cmd := fmt.Sprintf("kick %q", name)
+	if s.isJava() {
+		cmd = "kick " + name // Java names have no spaces, and quotes would be part of the name
+	}
 	if reason != "" {
 		cmd += " " + reason
 	}
@@ -509,6 +564,13 @@ func (s *Server) Message(name, text string) error {
 	}
 	if name == "" {
 		return s.Command("say " + text)
+	}
+	if s.isJava() {
+		name, err := cleanJavaName(name)
+		if err != nil {
+			return err
+		}
+		return s.Command("tell " + name + " " + text)
 	}
 	name, err := cleanGamertag(name)
 	if err != nil {
@@ -534,18 +596,38 @@ func (s *Server) noteJoinAttempt(name, xuid string, verified bool) {
 		return
 	}
 	s.filesMu.Lock()
-	allow, err := readJSONList[allowEntry](s.allowlistPath())
+	var names []string
+	var xuids []string
+	var err error
+	if s.isJava() {
+		var list []javaListEntry
+		list, err = readJSONList[javaListEntry](s.whitelistPath())
+		for _, a := range list {
+			names = append(names, a.Name)
+		}
+	} else {
+		var list []allowEntry
+		list, err = readJSONList[allowEntry](s.allowlistPath())
+		for _, a := range list {
+			names, xuids = append(names, a.Name), append(xuids, a.XUID)
+		}
+	}
 	s.filesMu.Unlock()
 	if err != nil {
 		return
 	}
-	for _, a := range allow {
-		if strings.EqualFold(a.Name, name) || (xuid != "" && a.XUID == xuid) {
+	for i, n := range names {
+		if strings.EqualFold(n, name) || (xuid != "" && i < len(xuids) && xuids[i] == xuid) {
 			return
 		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	for _, a := range s.attempts {
+		if strings.EqualFold(a.Name, name) && time.Since(a.At) < 5*time.Second {
+			return // the same attempt logged twice (Java logs a refusal on two lines)
+		}
+	}
 	kept := s.attempts[:0]
 	for _, a := range s.attempts {
 		if !strings.EqualFold(a.Name, name) {

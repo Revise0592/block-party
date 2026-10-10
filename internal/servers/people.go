@@ -114,6 +114,9 @@ type Settings struct {
 	SetupDone bool `json:"setupDone,omitempty"`
 	// Nightly is overnight updates and restarts (nil: off).
 	Nightly *Nightly `json:"nightly,omitempty"`
+	// OwnerJavaName is the owner's Minecraft Java username, offered when
+	// they add a Java server.
+	OwnerJavaName string `json:"ownerJavaName,omitempty"`
 	// AnnouncedVersion is the Bedrock version last announced to the owner.
 	AnnouncedVersion string `json:"announcedVersion,omitempty"`
 }
@@ -140,6 +143,15 @@ func (m *Manager) SetOwnerGamertag(name string) error {
 		}
 	}
 	return m.changeSettings(func(s *Settings) { s.OwnerGamertag = strings.TrimSpace(name) })
+}
+
+// SetOwnerJavaName saves the owner's Java username.
+func (m *Manager) SetOwnerJavaName(name string) error {
+	name, err := cleanJavaName(name)
+	if err != nil {
+		return err
+	}
+	return m.changeSettings(func(s *Settings) { s.OwnerJavaName = name })
 }
 
 // SetSetupDone records whether the setup guide is finished.

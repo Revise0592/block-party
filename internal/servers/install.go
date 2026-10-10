@@ -94,11 +94,16 @@ func (m *Manager) http() *http.Client {
 
 // download fetches url into a file in dir and returns its path.
 func (m *Manager) download(ctx context.Context, url, dir string, say func(string)) (string, error) {
+	return m.downloadAs(ctx, url, dir, say, m.userAgent())
+}
+
+// downloadAs is download with a given User-Agent.
+func (m *Manager) downloadAs(ctx context.Context, url, dir string, say func(string), agent string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", m.userAgent())
+	req.Header.Set("User-Agent", agent)
 	resp, err := m.http().Do(req)
 	if err != nil {
 		return "", fmt.Errorf("download failed: %w", err)

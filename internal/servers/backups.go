@@ -334,7 +334,11 @@ func (s *Server) snapshot(ctx context.Context, held *exec.Cmd) (string, error) {
 	} else {
 		s.say("Backing up (the server keeps running)…")
 		var listed map[string]int64
-		listed, err = s.holdSave(ctx, held)
+		if s.isJava() {
+			err = s.javaHoldSave(ctx, held) // everything is saved; copy it all
+		} else {
+			listed, err = s.holdSave(ctx, held)
+		}
 		if err == nil && afterHoldHook != nil {
 			err = afterHoldHook()
 		}
@@ -415,12 +419,16 @@ func (s *Server) resumeSave(held *exec.Cmd) {
 	for i := 0; i < 40; i++ {
 		s.mu.Lock()
 		if s.cmd != held {
-			s.hotBackup, s.saveList, s.saveReady = false, nil, false
+			s.hotBackup, s.saveList, s.saveReady, s.javaSaved = false, nil, false, nil
 			s.mu.Unlock()
 			return // that process is gone, and its hold with it
 		}
-		if s.sendLocked("save resume") {
-			s.hotBackup, s.saveList, s.saveReady = false, nil, false
+		resume := "save resume"
+		if s.isJava() {
+			resume = "save-on"
+		}
+		if s.sendLocked(resume) {
+			s.hotBackup, s.saveList, s.saveReady, s.javaSaved = false, nil, false, nil
 			s.hideSaveUntil = time.Now().Add(5 * time.Second) // its replies too
 			s.mu.Unlock()
 			return
@@ -429,7 +437,7 @@ func (s *Server) resumeSave(held *exec.Cmd) {
 		time.Sleep(250 * time.Millisecond)
 	}
 	s.mu.Lock()
-	s.hotBackup, s.saveList, s.saveReady = false, nil, false
+	s.hotBackup, s.saveList, s.saveReady, s.javaSaved = false, nil, false, nil
 	s.addLineLocked("[Panel] Couldn't tell the server to carry on saving after the backup. Restart it to be safe.")
 	s.mu.Unlock()
 	s.m.log.Error("could not send save resume", "id", s.meta.ID)
@@ -523,6 +531,7 @@ func settingsFiles() []string {
 	for f := range keepOnUpdate {
 		out = append(out, f)
 	}
+	out = append(out, javaSettingsFiles...) // Java servers' other lists and settings
 	sort.Strings(out)
 	return out
 }
@@ -537,6 +546,20 @@ func copyWorld(ctx context.Context, dir, snap string, listed map[string]int64) e
 		src := filepath.Join(dir, name)
 		if st, err := os.Lstat(src); err == nil && st.Mode().IsRegular() {
 			if err := copyFile(src, filepath.Join(snap, name), st.Mode().Perm()|0o600); err != nil {
+				return err
+			}
+		}
+	}
+	// Java servers' settings folders (Paper's config, plugins and theirs).
+	// Bedrock servers have a config/ folder of their own, which isn't
+	// settings: only a Java server's (it has paper.jar) are kept.
+	for _, name := range javaSettingsDirs {
+		if !fileExists(filepath.Join(dir, paperJar)) {
+			break
+		}
+		src := filepath.Join(dir, name)
+		if st, err := os.Lstat(src); err == nil && st.IsDir() {
+			if err := copyWorldFolder(src, filepath.Join(snap, name)); err != nil {
 				return err
 			}
 		}
@@ -827,6 +850,9 @@ func (s *Server) restore(archive *os.File, name string) error {
 	if _, err := os.Stat(filepath.Join(staging, "bedrock_server")); err == nil {
 		full = true
 	}
+	if _, err := os.Stat(filepath.Join(staging, paperJar)); err == nil {
+		full = true // a Java server's backup from before an update
+	}
 
 	// Back up what's there now, so the restore can be undone.
 	s.say("Backing up the current world first, so this can be undone…")
@@ -848,6 +874,11 @@ func (s *Server) restore(archive *os.File, name string) error {
 	for _, f := range settingsFiles() {
 		allowed[f] = true
 	}
+	if s.isJava() {
+		for _, d := range javaSettingsDirs {
+			allowed[d] = true
+		}
+	}
 	for _, e := range entries {
 		if full || allowed[e.Name()] {
 			items = append(items, e.Name())
@@ -861,7 +892,7 @@ func (s *Server) restore(archive *os.File, name string) error {
 	err = swapIn(staging, s.dir(), old, items)
 	if err == nil {
 		s.mu.Lock()
-		if perr := s.applyPanelProperties(false); perr != nil {
+		if perr := s.applyOwnProperties(); perr != nil {
 			s.addLineLocked("[Panel] Couldn't set the panel's port settings: " + perr.Error())
 		}
 		s.mu.Unlock()

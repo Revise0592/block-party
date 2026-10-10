@@ -63,6 +63,11 @@ type Status struct {
 	HoldVersion bool `json:"holdVersion,omitempty"`
 	// Outside is true while it's open to friends outside the house.
 	Outside bool `json:"outside,omitempty"`
+	// Java servers: the Paper build, memory (MB), and a newer release when
+	// there is one ("1.21.5 (Paper build 12)").
+	Build    int    `json:"build,omitempty"`
+	MemoryMB int    `json:"memoryMB,omitempty"`
+	UpdateTo string `json:"updateTo,omitempty"`
 }
 
 const (
@@ -121,7 +126,8 @@ type Server struct {
 	// when it started), which may differ from server.properties after a
 	// change that hasn't been applied by a restart.
 	playing           string
-	deleted           bool // removed by DeleteServer; nothing more happens to it
+	javaSaved         chan struct{} // a Java server finished "save-all" during a backup
+	deleted           bool          // removed by DeleteServer; nothing more happens to it
 	startedAt         time.Time
 	autoUpdating      bool      // the update running was started overnight (for its notification)
 	backupFailNoted   bool      // a failed scheduled backup was notified; reset by a good one
@@ -143,8 +149,13 @@ func (s *Server) displayName() string {
 	return s.meta.Name
 }
 
-func (s *Server) dir() string    { return filepath.Join(s.m.serversDir(), s.meta.ID) }
-func (s *Server) binary() string { return filepath.Join(s.dir(), "bedrock_server") }
+func (s *Server) dir() string { return filepath.Join(s.m.serversDir(), s.meta.ID) }
+func (s *Server) binary() string {
+	if s.isJava() {
+		return filepath.Join(s.dir(), paperJar)
+	}
+	return filepath.Join(s.dir(), "bedrock_server")
+}
 
 // incompleteMarker exists while an update is known to have been applied only
 // partly. The server won't start until it's gone: a successful update removes
@@ -166,6 +177,15 @@ func (s *Server) Status() Status {
 		Port: s.meta.Port, State: s.state, Message: s.message, AutoStart: s.meta.AutoStart,
 		Players: []Player{}, Preview: s.meta.Preview, Waiting: len(s.attempts),
 		Outside: s.meta.Outside, HoldVersion: s.meta.HoldVersion,
+	}
+	if s.isJava() {
+		st.Build, st.MemoryMB = s.meta.Build, s.meta.MemoryMB
+		if st.MemoryMB == 0 {
+			st.MemoryMB = defaultMemoryMB
+		}
+		if r := s.m.LatestPaper(); st.Version != "" && javaNewer(r, st.Version, st.Build) {
+			st.UpdateTo = r.label()
+		}
 	}
 	for _, p := range s.players {
 		st.Players = append(st.Players, p)
@@ -262,6 +282,14 @@ var (
 
 // onLineLocked handles one line of server output. Caller holds s.mu.
 func (s *Server) onLineLocked(line string) {
+	if s.isJava() {
+		if s.onJavaSaveLineLocked(line) {
+			return
+		}
+		s.addLineLocked(line)
+		s.onJavaLineLocked(line)
+		return
+	}
 	if s.onSaveLineLocked(line) {
 		return
 	}
@@ -349,16 +377,28 @@ func (s *Server) startLocked() error {
 	if b, err := os.ReadFile(s.incompleteMarker()); err == nil {
 		return s.failLocked(strings.TrimSpace(string(b)))
 	}
-	// The execute bit gets lost when files are copied around by hand, which
-	// is the classic "Permission denied: ./bedrock_server". Set it every time.
-	_ = os.Chmod(bin, 0o755)
-	if err := s.applyPanelProperties(false); err != nil {
-		s.addLineLocked("[Panel] Couldn't update server.properties: " + err.Error())
+	var cmd *exec.Cmd
+	if s.isJava() {
+		if err := s.applyJavaProperties(false); err != nil {
+			s.addLineLocked("[Panel] Couldn't update server.properties: " + err.Error())
+		}
+		java, args, err := s.javaCommand()
+		if err != nil {
+			return s.failLocked(err.Error())
+		}
+		cmd = exec.Command(java, args...)
+		cmd.Env = os.Environ()
+	} else {
+		// The execute bit gets lost when files are copied around by hand, which
+		// is the classic "Permission denied: ./bedrock_server". Set it every time.
+		_ = os.Chmod(bin, 0o755)
+		if err := s.applyPanelProperties(false); err != nil {
+			s.addLineLocked("[Panel] Couldn't update server.properties: " + err.Error())
+		}
+		cmd = exec.Command(bin)
+		cmd.Env = append(os.Environ(), "LD_LIBRARY_PATH=.")
 	}
-
-	cmd := exec.Command(bin)
 	cmd.Dir = s.dir()
-	cmd.Env = append(os.Environ(), "LD_LIBRARY_PATH=.")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -387,6 +427,9 @@ func (s *Server) startLocked() error {
 	}
 	if strings.TrimSpace(s.playing) == "" {
 		s.playing = "Bedrock level"
+		if s.isJava() {
+			s.playing = javaWorldDefault
+		}
 	}
 	s.state, s.message = StateStarting, ""
 	s.players = map[string]Player{}
@@ -640,8 +683,8 @@ func (s *Server) installAndStart(extra []string) {
 	s.state = StateStopped
 	s.mu.Unlock()
 	ops := extra
-	if owner := s.m.Settings().OwnerGamertag; owner != "" {
-		ops = append([]string{owner}, extra...)
+	if owner := s.m.Settings().OwnerGamertag; owner != "" && !s.isJava() {
+		ops = append([]string{owner}, extra...) // an Xbox gamertag: Bedrock only
 	}
 	for i, name := range ops {
 		if i > 0 && strings.EqualFold(name, ops[0]) {
@@ -721,7 +764,11 @@ func (s *Server) startUpdate(auto bool) error {
 		default:
 			s.notice = ""
 			if s.autoUpdating {
-				s.notifyLocked(notify.Updated, s.meta.Name+" was updated", s.meta.Name+" was updated overnight to Bedrock "+s.meta.Version+".", "")
+				what := "Bedrock " + s.meta.Version
+				if s.isJava() {
+					what = fmt.Sprintf("Minecraft Java %s (Paper build %d)", s.meta.Version, s.meta.Build)
+				}
+				s.notifyLocked(notify.Updated, s.meta.Name+" was updated", s.meta.Name+" was updated overnight to "+what+".", "")
 			}
 		}
 		s.autoUpdating = false
@@ -771,6 +818,9 @@ func (s *Server) update() error {
 // install downloads the current version into the server folder. On an
 // update, settings, the allowlist, permissions and worlds are kept.
 func (s *Server) install(update bool) error {
+	if s.isJava() {
+		return s.installJava(update)
+	}
 	ctx, cancel := context.WithTimeout(s.m.ctx, 30*time.Minute)
 	defer cancel()
 	s.mu.Lock()
@@ -832,6 +882,15 @@ func (s *Server) install(update bool) error {
 	_ = os.Remove(s.incompleteMarker())
 	s.say("Bedrock " + version + " is installed.")
 	return nil
+}
+
+// applyOwnProperties sets the settings the panel manages, for the server's
+// edition. Caller holds s.mu.
+func (s *Server) applyOwnProperties() error {
+	if s.isJava() {
+		return s.applyJavaProperties(false)
+	}
+	return s.applyPanelProperties(false)
 }
 
 // applyPanelProperties sets the settings the panel manages. Caller holds

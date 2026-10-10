@@ -118,19 +118,31 @@ func (s *Server) nightly(now time.Time, plan Nightly, latest string) {
 	skip := s.deleted || s.meta.LastNightly == night || s.busy || s.backupActive || s.coldBackup ||
 		len(s.players) > 0 || s.state == StateImporting || s.state == StateRestoring || s.state == StateError
 	version, preview, hold := s.meta.Version, s.meta.Preview, s.meta.HoldVersion
+	java, build := s.isJava(), s.meta.Build
 	running := s.cmd != nil && s.state == StateRunning
 	upFor := time.Since(s.startedAt)
 	s.mu.Unlock()
 	if skip {
 		return
 	}
-	if plan.AutoUpdate && latest == "" {
+	behind := !preview && version != "" && versionNewer(latest, version)
+	known := latest != ""
+	if java {
+		r := s.m.LatestPaper()
+		known, behind = r.Version != "", javaNewer(r, version, build)
+		latest = r.label()
+	}
+	if plan.AutoUpdate && !known {
 		return // the newest version isn't known yet: don't restart instead of updating
 	}
 	switch {
-	case plan.AutoUpdate && version != "" && !preview && !hold && versionNewer(latest, version):
+	case plan.AutoUpdate && !hold && behind:
 		s.markNightly(night)
-		s.say(fmt.Sprintf("Updating to Bedrock %s overnight (nobody is playing).", latest))
+		what := "Bedrock " + latest
+		if java {
+			what = "Minecraft Java " + latest
+		}
+		s.say(fmt.Sprintf("Updating to %s overnight (nobody is playing).", what))
 		if err := s.UpdateOvernight(); err != nil {
 			s.say("The overnight update didn't start: " + err.Error())
 		} else {

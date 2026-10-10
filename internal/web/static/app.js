@@ -100,6 +100,11 @@ function greeting() {
 // needsUpdate says whether a server is behind the newest release, and
 // whether it's far behind (a different 1.x, or ten or more versions back).
 function needsUpdate(s) {
+  if (s.type === "java") {
+    if (!s.updateTo) return null;
+    const to = s.updateTo.split(" ")[0].split(".").map(Number), v = (s.version || "").split(".").map(Number);
+    return { far: to[0] !== v[0] || to[1] !== v[1], to: s.updateTo };
+  }
   if (!latestVersion || !s.version || s.preview) return null;
   if (!newer(latestVersion, s.version)) return null;
   const l = latestVersion.split(".").map(Number), v = s.version.split(".").map(Number);
@@ -158,7 +163,7 @@ function renderServerRow(s) {
     el("div", {}, stateEl(s)),
     el("div", { class: "cell-muted" }, playingText(s), s.waiting ? el("div", { class: "note warn" }, `${s.waiting} waiting to be let in`) : null),
     el("div", {},
-      el("div", { class: "mono" }, s.version || word("noVersion")),
+      el("div", { class: "mono" }, s.type === "java" ? (s.version ? "Java " + s.version : "Java") : (s.version || word("noVersion"))),
       upd && access(s) >= CARE ? el("div", { class: "note upd" + (upd.far ? " far" : "") }, upd.far ? "Well behind: update" : "Update ready") : null),
     el("div", { class: "cell-muted" }, whenShort(s.lastBackup)),
     el("div", { class: "acts" },
@@ -196,7 +201,9 @@ function renderDashboard(list, force) {
   const behind = list.filter((s) => access(s) >= CARE && needsUpdate(s) && !busyStates.includes(s.state));
   $("update-banner").hidden = behind.length === 0;
   if (behind.length) {
-    $("update-banner-text").replaceChildren(el("b", {}, `Bedrock ${latestVersion} is out. `),
+    const javaTo = behind.find((s) => s.type === "java");
+    const headline = behind.some((s) => s.type !== "java") ? `Bedrock ${latestVersion} is out. ` : `Paper ${javaTo.updateTo.split(" ")[0]} is out. `;
+    $("update-banner-text").replaceChildren(el("b", {}, headline),
       `${behind.length} server${behind.length === 1 ? " can" : "s can"} update. Each one is backed up first and started again if it was running.`);
     $("update-all").textContent = behind.length === 1 ? "Update it" : `Update all ${behind.length}`;
     checkNightly();
@@ -234,7 +241,7 @@ $("update-all").addEventListener("click", async (ev) => {
   const behind = serverList.filter((s) => access(s) >= CARE && needsUpdate(s) && !busyStates.includes(s.state));
   const playing = behind.reduce((n, s) => n + s.players.length, 0);
   const note = playing ? `\n\n${playing} player(s) will be disconnected.` : "";
-  if (!confirm(`Update ${behind.map((s) => s.name).join(", ")} to Bedrock ${latestVersion}? Each is backed up first.${note}`)) return;
+  if (!confirm(`Update ${behind.map((s) => s.name).join(", ")} to the newest version? Each is backed up first.${note}`)) return;
   button.disabled = true;
   for (const s of behind) {
     try { await post(`/api/servers/${encodeURIComponent(s.id)}/update`); } catch (err) { alert(`${s.name}: ${err.message}`); }
@@ -287,24 +294,27 @@ let ovPlayersKey = ""; // what the Overview player list last showed
 let dashKey = "";      // what the dashboard last showed
 
 function renderDetailHead(s) {
-  const key = JSON.stringify([s.id, s.name, s.state, s.version, s.port, s.message, latestVersion, s.players.length, prefs.style, s.access]);
+  const key = JSON.stringify([s.id, s.name, s.state, s.version, s.build, s.updateTo, s.port, s.message, latestVersion, s.players.length, prefs.style, s.access]);
   if (key === detailKey) return; // unchanged: keep keyboard focus where it is
   detailKey = key;
   $("detail-name").textContent = s.name;
   const upd = needsUpdate(s);
   $("detail-facts").replaceChildren(stateEl(s),
-    el("span", {}, "Bedrock ", el("span", { class: "mono" }, s.version || "…")),
+    s.type === "java"
+      ? el("span", {}, "Java ", el("span", { class: "mono" }, s.version || "…"), s.build ? el("span", { class: "muted" }, ` · Paper build ${s.build}`) : null)
+      : el("span", {}, "Bedrock ", el("span", { class: "mono" }, s.version || "…")),
     el("span", {}, "Port ", el("span", { class: "mono" }, String(s.port))));
   $("detail-message").textContent = s.message || "";
   $("detail-message").hidden = !s.message;
   const busy = busyStates.includes(s.state);
   const copying = s.state === "importing";
   const updBtn = el("button", { class: upd ? "info" : "", onclick: confirmUpdate(s), disabled: copying || s.state === "installing" || s.state === "updating" || s.state === "restoring" },
-    "Update", upd ? el("span", { class: "long" }, ` to ${latestVersion}`) : null);
+    "Update", upd ? el("span", { class: "long" }, ` to ${upd.to ? upd.to.split(" ")[0] : latestVersion}`) : null);
   $("detail-actions").replaceChildren(...[startStopButton(s),
     el("button", { onclick: action(s.id, "restart"), disabled: !isLive(s) || busy }, "Restart"),
     access(s) >= CARE ? updBtn : null].filter(Boolean));
   for (const t of ["players", "settings", "addons", "backups"]) $("tab-" + t).hidden = copying;
+  $("tab-addons").hidden = copying || s.type === "java"; // Bedrock add-ons
   $("ov-backups-link").textContent = access(s) >= CARE ? "Restore or download" : "See backups";
 }
 
@@ -331,7 +341,7 @@ async function refresh() {
         location.hash = "#/"; // the owner changed what this account may do
       } else if (s) {
         renderDetailHead(s);
-        if (tab === "settings") renderHold();
+        if (tab === "settings") { renderHold(); renderMemory(); }
         if (tab === "overview") renderOverviewStatus(s);
       } else {
         resetSettings(); // it's gone (a failed import, say): nothing to save
@@ -434,6 +444,7 @@ function route() {
   if (next === "add") {
     $("add-owner").value = me.owner ? settings.ownerGamertag || "" : "";
     $("add-kid-note").hidden = me.owner;
+    showEdition();
     $("add-name").focus();
   }
   if (next === "people") loadPeople();
@@ -647,6 +658,11 @@ function ago(iso) {
 }
 
 function renderPlayers(v) {
+  const nameWord = v.java ? "Java username" : "Gamertag";
+  $("allow-name").placeholder = nameWord;
+  $("op-name").placeholder = nameWord;
+  $("allow-name").setAttribute("aria-label", nameWord + " to allow");
+  $("op-name").setAttribute("aria-label", nameWord + " to make operator");
   for (const k of ["online", "allowlist", "operators", "attempts"]) v[k] = v[k] || [];
   const ops = new Set(v.operators.filter((o) => !o.pending).map((o) => o.name.toLowerCase()));
   const listed = new Set(v.allowlist.map((a) => a.name.toLowerCase()));
@@ -682,7 +698,7 @@ function renderPlayers(v) {
     ? "Only these players can join."
     : "Off: anyone who can reach the server can join. The list is kept for when you turn it back on.";
   $("allowlist").replaceChildren(...(v.allowlist.length ? v.allowlist.map((a) => row(a.name,
-    a.xuid ? "" : "hasn't joined yet",
+    a.pending ? "added when the server next starts" : (v.java || a.xuid ? "" : "hasn't joined yet"),
     ops.has(a.name.toLowerCase()) ? el("span", { class: "badge" }, "operator") : null,
     btn("Remove", () => {
       if (confirm(`Remove ${a.name} from the allowlist?`)) playersCall(() => del(sid() + "/allowlist/" + enc(a.name)));
@@ -691,7 +707,7 @@ function renderPlayers(v) {
 
   // Operators
   $("operators").replaceChildren(...(v.operators.length ? v.operators.map((o) => row(o.name,
-    o.pending ? "becomes operator on their first join" : (listed.has(o.name.toLowerCase()) || !v.allowlistEnabled ? "" : "not on the allowlist"),
+    o.pending ? (v.java ? "made an operator when the server next starts" : "becomes operator on their first join") : (listed.has(o.name.toLowerCase()) || !v.allowlistEnabled ? "" : "not on the allowlist"),
     btn("Remove", () => playersCall(() => del(sid() + "/operators/" + enc(o.pending ? o.name : (o.xuid || o.name))))),
   )) : [emptyRow("No operators.")]));
 }
@@ -769,6 +785,7 @@ async function loadSettings() {
     for (const k of Object.keys(edits)) delete edits[k];
     $("rename-name").value = settingsView.name;
     renderHold();
+    renderMemory();
     renderSettings();
     showSettingsError(null);
   } catch (err) { showSettingsError(err); }
@@ -967,12 +984,17 @@ $("add-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   $("add-error").hidden = true;
   try {
-    const s = await post("/api/servers", {
+    const java = editionChoice() === "java";
+    const s = await post("/api/servers", java ? {
+      name: $("add-name").value, edition: "java", javaName: $("add-java").value.trim(),
+      memoryMB: Number($("add-memory").value), acceptEula: $("add-eula").checked,
+    } : {
       name: $("add-name").value,
       ownerGamertag: $("add-owner").value.trim(),
       acceptEula: $("add-eula").checked,
     });
-    if (me.owner) settings.ownerGamertag = $("add-owner").value.trim();
+    if (me.owner && !java) settings.ownerGamertag = $("add-owner").value.trim();
+    if (me.owner && java && $("add-java").value.trim()) settings.ownerJavaName = $("add-java").value.trim();
     $("add-form").reset();
     await refresh();
     location.hash = serverHref(s.id, "console");
@@ -1166,7 +1188,7 @@ async function loadDeleted() {
       `Deleted ${whenShort(d.deleted).toLowerCase()} · ${d.backups} backup${d.backups === 1 ? "" : "s"}, ${mb1(d.size)} · port ${d.port}`,
       d.canBringBack ? btn("Bring back", async (ev) => {
         const b = ev.currentTarget;
-        if (!confirm(`Bring back ${d.name}? Bedrock is downloaded again and its world and settings are put back. It stays stopped until you start it.`)) return;
+        if (!confirm(`Bring back ${d.name}? The server is downloaded again and its world and settings are put back. It stays stopped until you start it.`)) return;
         b.disabled = true;
         try {
           const st = await post(`/api/deleted-servers/${encodeURIComponent(d.id)}/bring-back`);
@@ -1384,6 +1406,46 @@ $("notify-form").addEventListener("submit", async (ev) => {
     setTimeout(() => { if (!notifyDirty) $("notify-dirty").hidden = true; $("notify-dirty").textContent = "Unsaved changes"; }, 2500);
   } catch (err) { $("notify-error").textContent = err.message; $("notify-error").hidden = false; $("notify-error").scrollIntoView({ block: "nearest" }); }
   b.disabled = false;
+});
+
+// ---- Java servers ----
+
+function editionChoice() {
+  const r = document.querySelector("input[name=edition]:checked");
+  return r ? r.value : "bedrock";
+}
+
+function showEdition() {
+  const java = editionChoice() === "java";
+  $("add-owner-label").hidden = java;
+  $("add-java-label").hidden = !java;
+  $("add-memory-label").hidden = !java;
+  $("edition-help").textContent = java
+    ? "For Minecraft: Java Edition on a PC or Mac. Runs Paper, which is faster than Mojang's own server and takes plugins. Consoles can join Java servers in a later update."
+    : "For consoles, phones, tablets and Windows: the Minecraft most kids play.";
+  $("add-source").textContent = java ? "Paper is downloaded from papermc.io, and Java from adoptium.net." : "The server is downloaded from Mojang.";
+  if (java && !$("add-java").value) $("add-java").value = me.owner ? settings.ownerJavaName || "" : "";
+}
+for (const r of document.querySelectorAll("input[name=edition]")) r.addEventListener("change", showEdition);
+
+function renderMemory() {
+  const s = serverList.find((x) => x.id === selected);
+  const show = !!s && s.type === "java" && access(s) >= CARE;
+  $("memory-card").hidden = !show;
+  if (!show) return;
+  const sel = $("memory-select");
+  const v = String(s.memoryMB || 2048);
+  if (![...sel.options].some((o) => o.value === v)) sel.append(el("option", { value: v }, `${Math.round(Number(v) / 102.4) / 10} GB`));
+  if (document.activeElement !== sel) sel.value = v;
+}
+$("memory-select").addEventListener("change", async (ev) => {
+  const sel = ev.currentTarget;
+  try {
+    await post(`${sid()}/memory`, { memoryMB: Number(sel.value) });
+    showSettingsError(null);
+    await refresh();
+  } catch (err) { showSettingsError(err); }
+  renderMemory();
 });
 
 // ---- add-ons tab ----
@@ -1692,6 +1754,12 @@ function importRow(c) {
 
 // inviteText tells a friend how to join a server from outside the house.
 function inviteText(v, name) {
+  if (v.java) {
+    return [`Come play on "${name}" with me in Minecraft: Java Edition!`, "",
+      "Open Minecraft (Java Edition) on your PC or Mac, choose Multiplayer, then Add Server, and type",
+      `  Server Address: ${v.address}:${v.port}`, "",
+      "Send me your Minecraft Java username first so I can put you on the allowlist."].join("\n");
+  }
   const lines = [`Come play on "${name}" with me in Minecraft!`, "",
     "On a PC, phone or tablet: open Minecraft, go to Play, then Servers, then Add Server, and type",
     `  Server address: ${v.address}`, `  Port: ${v.port}`, ""];

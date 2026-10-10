@@ -69,10 +69,20 @@ func opts(pairs ...string) []Option {
 	return o
 }
 
-var settingsSchema = []struct {
+type schemaGroup struct {
 	title  string
 	fields []fieldDef
-}{
+}
+
+// schema returns the settings a server of this type shows.
+func (s *Server) schema() []schemaGroup {
+	if s.isJava() {
+		return javaSchema
+	}
+	return settingsSchema
+}
+
+var settingsSchema = []schemaGroup{
 	{"Game", []fieldDef{
 		{Field: Field{Key: "gamemode", Label: "Game mode", Type: "select",
 			Options: opts("survival", "Survival", "creative", "Creative", "adventure", "Adventure"),
@@ -140,6 +150,58 @@ var settingsSchema = []struct {
 	}},
 }
 
+// javaSchema is the Settings tab of a Java (Paper) server.
+var javaSchema = []schemaGroup{
+	{"Game", []fieldDef{
+		{Field: Field{Key: "gamemode", Label: "Game mode", Type: "select",
+			Options: opts("survival", "Survival", "creative", "Creative", "adventure", "Adventure", "spectator", "Spectator"),
+			Help:    "The game mode players get when they join for the first time."}, def: "survival"},
+		{Field: Field{Key: "force-gamemode", Label: "Force game mode", Type: "bool",
+			Help: "Put everyone in the game mode above every time they join."}, def: "false"},
+		{Field: Field{Key: "difficulty", Label: "Difficulty", Type: "select",
+			Options: opts("peaceful", "Peaceful: no hostile mobs", "easy", "Easy", "normal", "Normal", "hard", "Hard")}, def: "easy"},
+		{Field: Field{Key: "hardcore", Label: "Hardcore", Type: "bool",
+			Help:     "One life: players who die can only watch.",
+			WarnWhen: "true", Warning: "In hardcore, anyone who dies becomes a spectator for good."}, def: "false"},
+		{Field: Field{Key: "allow-flight", Label: "Allow flying (mods and some plugins)", Type: "bool",
+			Help: "Off kicks players the server thinks are flying without being allowed to."}, def: "false"},
+		{Field: Field{Key: "spawn-protection", Label: "Protected area around spawn (blocks)", Type: "int", Min: 0, Max: 64,
+			Help: "Only operators can build this close to the world spawn. 0 means no protected area."}, def: "16"},
+	}},
+	{"Players and chat", []fieldDef{
+		{Field: Field{Key: "max-players", Label: "Maximum players", Type: "int", Min: 1, Max: 200,
+			Help: "How many people can play at once."}, def: "20"},
+		{Field: Field{Key: "player-idle-timeout", Label: "Kick idle players after (minutes)", Type: "int", Min: 0, Max: 1440,
+			Help: "0 means never."}, def: "0"},
+		{Field: Field{Key: "motd", Label: "Message in the server list", Type: "text", Max: 59,
+			Help: "Shown under the server's name in Minecraft's multiplayer list."}, def: "A Minecraft Server",
+			validate: func(v string) error { return textRule(v, "") }},
+	}},
+	{"World", []fieldDef{
+		{Field: Field{Key: "level-name", Label: "World folder", Type: "text", Max: 64,
+			Help:     "Which world the server loads, by its folder name in worlds/.",
+			WarnWhen: "*", Warning: "Changing this makes the server load, or create, a different world. Your current world isn't deleted: change it back to return to it."},
+			def: javaWorldDefault, validate: worldFolderRule},
+		{Field: Field{Key: "level-seed", Label: "World seed", Type: "readonly",
+			Help: "Only used when a world is first created, so it can't be changed here."}},
+		{Field: Field{Key: "view-distance", Label: "View distance (chunks)", Type: "int", Min: 3, Max: 32,
+			Help: "How far players can see. Higher values use more memory and processor."}, def: "10"},
+		{Field: Field{Key: "simulation-distance", Label: "Active distance (chunks)", Type: "int", Min: 3, Max: 32,
+			Help: "How far from each player the world keeps running: crops, mobs, redstone."}, def: "10"},
+	}},
+	{"Security", []fieldDef{
+		{Field: Field{Key: "online-mode", Label: "Check Minecraft accounts", Type: "bool",
+			Help:     "Players must sign in with a real Minecraft account. Keep this on.",
+			WarnWhen: "false", Warning: "With account checks off, anyone can join with any name, including yours or an operator's, and the allowlist can't tell."}, def: "true"},
+		{Field: Field{Key: "white-list", Label: "Allowlist", Type: "readonly", Link: "players",
+			Help: "Turned on and off, and edited, on the Players tab."}, def: "false", managed: true},
+	}},
+	{"Set by the panel", []fieldDef{
+		{Field: Field{Key: "server-port", Label: "Port", Type: "readonly",
+			Help: "Given out by the panel so servers never clash."}, managed: true},
+	}},
+}
+
 func textRule(v, forbidden string) error {
 	switch {
 	case strings.TrimSpace(v) == "":
@@ -167,10 +229,12 @@ func worldFolderRule(v string) error {
 	return nil
 }
 
-func findField(key string) (*fieldDef, bool) {
-	for gi := range settingsSchema {
-		for fi := range settingsSchema[gi].fields {
-			if f := &settingsSchema[gi].fields[fi]; f.Key == key {
+func findField(key string) (*fieldDef, bool) { return findIn(settingsSchema, key) }
+
+func findIn(schema []schemaGroup, key string) (*fieldDef, bool) {
+	for gi := range schema {
+		for fi := range schema[gi].fields {
+			if f := &schema[gi].fields[fi]; f.Key == key {
 				return f, true
 			}
 		}
@@ -223,7 +287,7 @@ func (s *Server) Settings() (SettingsView, error) {
 	}
 	st := s.Status()
 	v := SettingsView{Name: st.Name, Running: st.State == StateRunning || st.State == StateStarting}
-	for _, g := range settingsSchema {
+	for _, g := range s.schema() {
 		group := Group{Title: g.title}
 		for _, f := range g.fields {
 			field := f.Field
@@ -263,7 +327,7 @@ func (s *Server) SaveSettings(values map[string]string) ([]SettingsChange, error
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		f, ok := findField(k)
+		f, ok := findIn(s.schema(), k)
 		if !ok || f.managed || f.Type == "readonly" {
 			return nil, fmt.Errorf("%q can't be changed on the Settings tab", k)
 		}
@@ -293,7 +357,7 @@ func (s *Server) SaveSettings(values map[string]string) ([]SettingsChange, error
 	p, err := readProperties(s.propertiesPath())
 	if err == nil {
 		for _, k := range keys {
-			f, _ := findField(k)
+			f, _ := findIn(s.schema(), k)
 			old, ok := p.get(k)
 			if !ok {
 				old = f.def
@@ -359,14 +423,14 @@ func (s *Server) SaveRawProperties(text string) error {
 	}
 	s.filesMu.Lock()
 	s.mu.Lock()
-	if problem := outsideProblem(p); s.meta.Outside && problem != "" {
+	if problem := outsideProblemFor(p, s.isJava()); s.meta.Outside && problem != "" {
 		s.mu.Unlock()
 		s.filesMu.Unlock()
 		return fmt.Errorf("%w (with this file, %s)", ErrOutsideOpen, problem)
 	}
 	err := p.write(s.propertiesPath())
 	if err == nil {
-		if aerr := s.applyPanelProperties(false); aerr != nil {
+		if aerr := s.applyOwnProperties(); aerr != nil {
 			err = fmt.Errorf("the file was saved, but the panel couldn't put back its port settings: %w", aerr)
 		}
 		s.addLineLocked("[Panel] server.properties was edited in the advanced editor.")

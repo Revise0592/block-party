@@ -30,7 +30,7 @@ func OutsideServers(mgr *servers.Manager) func() []outside.Server {
 			if !ok {
 				continue
 			}
-			s := outside.Server{ID: st.ID, Name: st.Name, Port: st.Port, Open: st.Outside}
+			s := outside.Server{ID: st.ID, Name: st.Name, Port: st.Port, Open: st.Outside, Java: st.Type == servers.TypeJava}
 			if st.Outside {
 				s.Problem = srv.OutsideProblem()
 			}
@@ -92,6 +92,7 @@ type serverOutsideView struct {
 	PortError  string `json:"portError,omitempty"`
 	Shared     bool   `json:"shared"`
 	Owner      string `json:"owner"`
+	Java       bool   `json:"java"`
 }
 
 func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsideView {
@@ -99,6 +100,11 @@ func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsi
 	v := serverOutsideView{
 		Open: ss.Outside, Enabled: st.Settings.Enabled, Address: st.Address, Port: ss.Port,
 		Consoles: st.Settings.Consoles, UPnP: st.Settings.UPnP, Shared: st.Shared, Owner: s.auth.Username(),
+		Java: ss.Type == servers.TypeJava,
+	}
+	proto := "UDP"
+	if v.Java {
+		proto = "TCP"
 	}
 	// The address consoles outside use as their DNS: where the address
 	// friends use leads (it's never a home address; see outside).
@@ -115,7 +121,7 @@ func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsi
 		}
 	}
 	for _, p := range st.Ports {
-		if p.Port.Port == ss.Port && p.Proto == "UDP" {
+		if p.Port.Port == ss.Port && p.Proto == proto {
 			v.Opened, v.PortError = p.Opened, p.Error
 		}
 	}

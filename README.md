@@ -50,6 +50,10 @@ Switch players can join without extra apps.
   UPnP (or lists the forwards to add by hand), and writes an invite that tells
   a friend how to join from a PC, phone or console. See
   [Friends outside the house](#friends-outside-the-house).
+- **Java Edition servers (Paper).** Add a server and pick Java: the panel
+  downloads Paper and the Java it needs, and Java servers get the same
+  console, players, settings, backups, overnight updates, roles and
+  notifications. See [Java servers](#java-servers).
 - **Notifications** to your phone (ntfy), a Discord channel, email, or text
   messages (Twilio), in any combination, each with its own choice of events:
   someone wants to join, a server crashes, a backup fails, and more. See
@@ -94,7 +98,7 @@ Switch players can join without extra apps.
 
 ## Coming next
 
-Java, Hytale and more.
+Consoles joining Java servers (Geyser), Java plugins, then Hytale.
 
 ## Install
 
@@ -207,6 +211,36 @@ the allowlist.
 Consoles outside only see the servers open to them in the list, and are sent
 to your hostname. The panel re-checks everything every minute, and closes the
 forwards it made when it stops.
+
+### Java servers
+
+**Add server → Java (Paper)** sets up a Minecraft: Java Edition server running
+[Paper](https://papermc.io), which is faster than Mojang's own server and
+runs plugins. The panel downloads:
+
+- the newest stable Paper build, from papermc.io;
+- the Java it needs (Eclipse Temurin from adoptium.net), once, into
+  `/data/runtimes`. Minecraft 26.x needs Java 25; 1.20.5 to 1.21.x need
+  Java 21.
+
+New Java servers have their allowlist on, account checks on, and a
+protected-spawn of 0. Give your Minecraft Java username when you add one to
+be on its allowlist and an operator. On the **Players** tab, allowlist and
+operator changes go by command while the server runs; while it's stopped,
+the panel looks the account up with Mojang (or waits until the next start if
+it can't). Players turned away by the allowlist show under **Tried to join**.
+
+Each Java server has a **Memory** setting (Settings tab; 2 GB by default):
+make sure Unraid has that much free. Java servers use TCP on their port
+(open it for friends outside with the same switch as Bedrock servers).
+Worlds live in `worlds/` (Paper is started with `--world-container worlds`)
+and are backed up while the server runs. **Update** moves to the newest Paper build,
+and to a new Minecraft version when Paper has a stable build for it; worlds
+can't go back to an older version afterwards, so the backup made first is the
+way back.
+
+For now Java servers don't show in the console server list (Bedrock players
+can't join them yet), and the Add-ons tab is for Bedrock servers.
 
 ### Notifications
 

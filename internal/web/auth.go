@@ -262,8 +262,8 @@ func (s *Server) setupGamertag(w http.ResponseWriter, r *http.Request) {
 		name := s.mgr.Settings().OwnerGamertag
 		for _, st := range s.mgr.List() {
 			srv, ok := s.mgr.Get(st.ID)
-			if !ok {
-				continue
+			if !ok || st.Type == servers.TypeJava {
+				continue // an Xbox gamertag is no use on a Java server (it could even be someone else's Java name)
 			}
 			if err := s.addOwner(srv, name); err != nil {
 				skipped = append(skipped, st.Name+": "+err.Error())

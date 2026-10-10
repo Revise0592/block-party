@@ -1,0 +1,330 @@
+package servers
+
+import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+// fakeJava stands in for "java -jar paper.jar": it prints what Paper prints
+// and answers the commands the panel sends.
+const fakeJava = `#!/bin/sh
+echo "[12:00:00 INFO]: Starting minecraft server version VERSION"
+echo "[12:00:01 INFO]: Done (1.234s)! For help, type \"help\""
+while read line; do
+  case "$line" in
+    stop) echo "[12:00:09 INFO]: Stopping server"; exit 0;;
+    crash) exit 3;;
+    save-off) echo "[12:00:02 INFO]: Automatic saving is now disabled";;
+    "save-all flush") echo "[12:00:02 INFO]: Saving the game (this may take a moment!)"; echo "[12:00:03 INFO]: Saved the game";;
+    save-on) echo "[12:00:04 INFO]: Automatic saving is now enabled";;
+    join\ *) echo "[12:00:05 INFO]: ${line#join } joined the game";;
+    leave\ *) echo "[12:00:06 INFO]: ${line#leave } left the game";;
+    reject\ *) echo "[12:00:07 INFO]: Disconnecting ${line#reject } (/192.168.1.20:50000): You are not white-listed on this server!";;
+    *) echo "[12:00:08 INFO]: got: $line";;
+  esac
+done
+`
+
+type fakeJavaWorld struct {
+	mu       sync.Mutex
+	version  string
+	build    int
+	jars     map[string][]byte
+	jre      []byte
+	jreSum   string
+	profiles bool // Mojang's profile service is reachable
+	srv      *httptest.Server
+	jreFetch int
+}
+
+func sha(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
+
+func newFakeJavaWorld(t *testing.T) *fakeJavaWorld {
+	f := &fakeJavaWorld{version: "1.21.4", build: 5, jars: map[string][]byte{}, profiles: true}
+	// A JRE whose bin/java is the fake server.
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	tw.WriteHeader(&tar.Header{Name: "jdk-21-jre/", Typeflag: tar.TypeDir, Mode: 0o755})
+	tw.WriteHeader(&tar.Header{Name: "jdk-21-jre/bin/", Typeflag: tar.TypeDir, Mode: 0o755})
+	body := []byte(strings.ReplaceAll(fakeJava, "VERSION", "1.21.4"))
+	tw.WriteHeader(&tar.Header{Name: "jdk-21-jre/bin/java", Typeflag: tar.TypeReg, Mode: 0o755, Size: int64(len(body))})
+	tw.Write(body)
+	tw.Close()
+	gz.Close()
+	f.jre, f.jreSum = buf.Bytes(), sha(buf.Bytes())
+	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		p := r.URL.Path
+		switch {
+		case p == "/paper":
+			json.NewEncoder(w).Encode(map[string]any{"versions": map[string][]string{"1.21": {f.version, "1.21.9-rc1", "1.20.6"}}})
+		case strings.HasPrefix(p, "/paper/versions/") && strings.HasSuffix(p, "/builds"):
+			v := strings.TrimSuffix(strings.TrimPrefix(p, "/paper/versions/"), "/builds")
+			jar := []byte("paper " + v + " build " + fmt.Sprint(f.build))
+			name := fmt.Sprintf("/jar/paper-%s-%d.jar", v, f.build)
+			f.jars[name] = jar
+			json.NewEncoder(w).Encode([]map[string]any{
+				{"id": f.build - 1, "channel": "STABLE", "downloads": map[string]any{"server:default": map[string]any{"url": f.srv.URL + "/jar/old.jar"}}},
+				{"id": f.build, "channel": "STABLE", "downloads": map[string]any{"server:default": map[string]any{"name": "paper.jar", "url": f.srv.URL + name, "checksums": map[string]string{"sha256": sha(jar)}}}},
+				{"id": f.build + 1, "channel": "ALPHA", "downloads": map[string]any{}},
+			})
+		case strings.HasPrefix(p, "/jar/"):
+			w.Write(f.jars[p])
+		case p == "/manifest":
+			json.NewEncoder(w).Encode(map[string]any{"versions": []map[string]string{{"id": f.version, "url": f.srv.URL + "/v.json"}}})
+		case p == "/v.json":
+			w.Write([]byte(`{"javaVersion":{"majorVersion":21}}`))
+		case strings.HasPrefix(p, "/adoptium/assets/latest/21/hotspot"):
+			json.NewEncoder(w).Encode([]map[string]any{{"release_name": "jdk-21-test", "binary": map[string]any{"package": map[string]any{"link": f.srv.URL + "/jre.tar.gz", "checksum": f.jreSum}}}})
+		case p == "/jre.tar.gz":
+			f.jreFetch++
+			w.Write(f.jre)
+		case strings.HasPrefix(p, "/profiles/"):
+			name := strings.TrimPrefix(p, "/profiles/")
+			if !f.profiles {
+				w.WriteHeader(503)
+				return
+			}
+			if name == "Nobody" {
+				w.WriteHeader(204)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]string{"id": "0123456789abcdef0123456789abcdef", "name": name})
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	t.Cleanup(f.srv.Close)
+	return f
+}
+
+func newJavaManager(t *testing.T, f *fakeJavaWorld) *Manager {
+	t.Helper()
+	m := New(Options{DataDir: t.TempDir(), StopTimeout: time.Second,
+		PaperAPI: f.srv.URL + "/paper", AdoptiumAPI: f.srv.URL + "/adoptium", MojangVersions: f.srv.URL + "/manifest", MojangProfiles: f.srv.URL + "/profiles/"})
+	if err := m.Load(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.StopAll)
+	return m
+}
+
+func TestJavaServer(t *testing.T) {
+	f := newFakeJavaWorld(t)
+	m := newJavaManager(t, f)
+	st, err := m.CreateJava("Java Fun", 1024, "Steve_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, _ := m.Get(st.ID)
+	waitFor(t, s, "running", state(StateRunning))
+	st = s.Status()
+	if st.Type != TypeJava || st.Version != "1.21.4" || st.Build != 5 || st.MemoryMB != 1024 {
+		t.Errorf("status: %+v", st)
+	}
+	props := readFile(t, s.propertiesPath())
+	for _, want := range []string{"server-port=" + fmt.Sprint(st.Port), "white-list=true", "online-mode=true", "motd=Java Fun", "level-name=world"} {
+		if !strings.Contains(props, want) {
+			t.Errorf("server.properties lacks %q:\n%s", want, props)
+		}
+	}
+	if !strings.Contains(readFile(t, filepath.Join(s.dir(), "eula.txt")), "eula=true") {
+		t.Error("eula")
+	}
+	// The adder was looked up and put on the lists before the first start.
+	if wl := readFile(t, s.whitelistPath()); !strings.Contains(wl, `"name": "Steve_1"`) || !strings.Contains(wl, "01234567-89ab-cdef-0123-456789abcdef") {
+		t.Errorf("whitelist: %s", wl)
+	}
+	if !strings.Contains(readFile(t, s.opsPath()), "Steve_1") {
+		t.Error("not an operator")
+	}
+
+	// Running: changes go by command.
+	if err := s.AllowlistAdd("Alex", ""); err != nil {
+		t.Fatal(err)
+	}
+	waitConsole(t, s, "got: whitelist add Alex")
+	if err := s.Kick("Alex", "bye now"); err != nil {
+		t.Fatal(err)
+	}
+	waitConsole(t, s, "got: kick Alex bye now")
+	if err := s.AllowlistAdd("bad name!", ""); err == nil {
+		t.Error("bad name accepted")
+	}
+	// Joins, leaves and turned-away players.
+	s.Command("join Steve_1")
+	waitConsole(t, s, "Steve_1 joined the game")
+	if p := s.Status().Players; len(p) != 1 || p[0].Name != "Steve_1" {
+		t.Errorf("players: %+v", p)
+	}
+	s.Command("reject Griefer")
+	waitConsole(t, s, "not white-listed")
+	time.Sleep(200 * time.Millisecond)
+	if v, _ := s.Players(); len(v.Attempts) != 1 || v.Attempts[0].Name != "Griefer" {
+		t.Errorf("attempts: %+v", v.Attempts)
+	}
+	s.Command("leave Steve_1")
+	waitConsole(t, s, "left the game")
+
+	// A backup while it runs: saving is paused, everything copied, resumed.
+	os.MkdirAll(filepath.Join(s.dir(), "worlds", "world", "region"), 0o755)
+	os.WriteFile(filepath.Join(s.dir(), "worlds", "world", "level.dat"), []byte("java world"), 0o644)
+	os.MkdirAll(filepath.Join(s.dir(), "plugins"), 0o755)
+	os.WriteFile(filepath.Join(s.dir(), "plugins", "x.yml"), []byte("x"), 0o644)
+	if err := s.StartBackup(); err != nil {
+		t.Fatal(err)
+	}
+	waitConsole(t, s, "Backup saved")
+	if consoleHas(s, "Saved the game") {
+		t.Error("save chatter in the console")
+	}
+	b := s.Backups().Backups[0]
+	c := tarContents(t, filepath.Join(m.backupsDir(s.ID()), b.Name))
+	if c["worlds/world/level.dat"] != "java world" || c["plugins/x.yml"] != "x" || c["ops.json"] == "" {
+		t.Errorf("backup has %v", keys(c))
+	}
+
+	// Stopped, with Mojang unreachable: the change waits for the next start.
+	s.Stop()
+	waitFor(t, s, "stopped", state(StateStopped))
+	if err := s.AllowlistAdd("Nobody", ""); err == nil {
+		t.Error("an account that doesn't exist was added")
+	}
+	f.mu.Lock()
+	f.profiles = false
+	f.mu.Unlock()
+	if _, err := s.OpAdd("Later"); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := s.Players(); len(v.Operators) != 2 || !hasPending(v.Operators, "Later") {
+		t.Errorf("ops: %+v", v.Operators)
+	}
+	if err := s.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitConsole(t, s, "got: op Later")
+
+	// An update to a newer build: backed up first, Java isn't fetched again.
+	f.mu.Lock()
+	f.build = 7
+	f.mu.Unlock()
+	if err := s.Update(); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, s, "updated", func(st Status) bool { return st.Build == 7 && st.State == StateRunning })
+	if f.jreFetch != 1 {
+		t.Errorf("Java downloaded %d times", f.jreFetch)
+	}
+	if !strings.Contains(readFile(t, s.binary()), "build 7") {
+		t.Error("jar not replaced")
+	}
+	// Java servers have their own settings, and no Bedrock add-ons.
+	v, err := s.Settings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, g := range v.Groups {
+		for _, fl := range g.Fields {
+			found = found || fl.Key == "hardcore"
+		}
+	}
+	if !found {
+		t.Error("no Java settings")
+	}
+	if _, err := s.SaveSettings(map[string]string{"allow-cheats": "true"}); err == nil {
+		t.Error("a Bedrock setting saved on a Java server")
+	}
+	if _, err := s.Packs(); err == nil {
+		t.Error("add-ons on a Java server")
+	}
+	// Not offered to Bedrock consoles.
+	for _, j := range m.Joinable() {
+		if j.Name == "Java Fun" {
+			t.Error("Java server in the console list")
+		}
+	}
+}
+
+func hasPending(l []ListedName, name string) bool {
+	for _, x := range l {
+		if x.Name == name && x.Pending {
+			return true
+		}
+	}
+	return false
+}
+
+func keys(m map[string]string) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+func TestLatestPaperSkipsPreReleases(t *testing.T) {
+	f := newFakeJavaWorld(t)
+	m := newJavaManager(t, f)
+	r, err := m.latestPaper(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Version != "1.21.4" || r.Build != 5 || r.SHA256 == "" {
+		t.Errorf("release %+v", r)
+	}
+	if !javaNewer(PaperRelease{Version: "1.21.4", Build: 6}, "1.21.4", 5) || javaNewer(PaperRelease{Version: "1.21.4", Build: 5}, "1.21.4", 5) ||
+		!javaNewer(PaperRelease{Version: "26.1", Build: 1}, "1.21.4", 99) {
+		t.Error("javaNewer")
+	}
+	if m.javaMajorFor(t.Context(), "1.21.4") != 21 {
+		t.Error("java version from Mojang")
+	}
+	f.srv.Close() // unreachable: guess from the version
+	if m.javaMajorFor(t.Context(), "26.1.2") != 25 || m.javaMajorFor(t.Context(), "1.20.4") != 17 {
+		t.Error("java version guess")
+	}
+}
+
+func TestJavaLinesCantBeFakedInChat(t *testing.T) {
+	for line, want := range map[string]string{
+		"[12:00:05 INFO]: Steve joined the game":                                                          "join Steve",
+		"[12:00:05] [Server thread/INFO]: Steve joined the game":                                          "join Steve",
+		"[12:00:05 INFO]: Steve (formerly known as Bob) joined the game":                                  "join Steve",
+		"[12:00:05 INFO]: <Bob> ]: Alice left the game":                                                   "",
+		"[12:00:05 INFO]: <Bob> Alice joined the game":                                                    "",
+		"[12:00:05 INFO]: Disconnecting Griefer (/1.2.3.4:5): You are not white-listed on this server!":   "reject Griefer",
+		"[12:00:05 INFO]: Griefer (/1.2.3.4:5) lost connection: You are not white-listed on this server!": "reject Griefer",
+		"[12:00:05 INFO]: <Bob> Griefer (/x) You are not white-listed":                                    "",
+	} {
+		got := ""
+		if m := reJavaJoin.FindStringSubmatch(line); m != nil {
+			got = "join " + m[1]
+		} else if m := reJavaNotAllow.FindStringSubmatch(line); m != nil {
+			got = "reject " + m[1]
+		} else if m := reJavaLeave.FindStringSubmatch(line); m != nil {
+			got = "leave " + m[1]
+		}
+		if got != want {
+			t.Errorf("%q: got %q, want %q", line, got, want)
+		}
+	}
+	if reJavaSaved.MatchString("[12:00:05 INFO]: <Bob> Saved the game") || !reJavaSaved.MatchString("[12:00:05 INFO]: Saved the game") {
+		t.Error("save line")
+	}
+}

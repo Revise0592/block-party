@@ -80,6 +80,11 @@ func main() {
 		Version:     version,
 		StopTimeout: time.Duration(stopSeconds) * time.Second,
 		ImportDir:   envOr("IMPORT_DIR", "/import"),
+		// Where Java servers come from; only changed for testing.
+		PaperAPI:       os.Getenv("PAPER_API"),
+		AdoptiumAPI:    os.Getenv("ADOPTIUM_API"),
+		MojangVersions: os.Getenv("MOJANG_VERSIONS"),
+		MojangProfiles: os.Getenv("MOJANG_PROFILES"),
 	})
 	if err := mgr.Load(); err != nil {
 		slog.Error("could not read the servers folder", "error", err)

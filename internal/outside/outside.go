@@ -52,6 +52,7 @@ type Server struct {
 	Port    int
 	Open    bool   // the server is marked open to friends outside
 	Problem string // why it can't be open right now ("the allowlist is off"), or ""
+	Java    bool   // a Java server: its port is TCP
 }
 
 // Port is one forward on the router.
@@ -374,7 +375,11 @@ func (m *Manager) reconcile(ctx context.Context) {
 		if s.Open && s.Problem == "" && set.Enabled {
 			ss.Reached = true
 			open[s.Port] = true
-			want = append(want, Port{Port: s.Port, Proto: "UDP", For: s.Name})
+			proto := "UDP"
+			if s.Java {
+				proto = "TCP"
+			}
+			want = append(want, Port{Port: s.Port, Proto: proto, For: s.Name})
 		}
 		st.Servers = append(st.Servers, ss)
 	}

@@ -134,16 +134,36 @@
       <div class="crumbs"><a href="#/">Servers</a> /</div>
       <h1>Add a server</h1>
       <form id="add-form" class="card">
+        <fieldset class="edition">
+          <legend>Edition</legend>
+          <div class="segmented" role="radiogroup" aria-label="Edition">
+            <label><input type="radio" name="edition" value="bedrock" checked><span>Bedrock</span></label>
+            <label><input type="radio" name="edition" value="java"><span>Java (Paper)</span></label>
+          </div>
+          <p class="muted small" id="edition-help">For consoles, phones, tablets and Windows: the Minecraft most kids play.</p>
+        </fieldset>
         <label>Server name
           <input id="add-name" maxlength="40" required placeholder="Survival world" autocomplete="off">
         </label>
-        <label>Your gamertag
+        <label id="add-owner-label">Your gamertag
           <input id="add-owner" maxlength="32" placeholder="Optional: you'll be on the allowlist and an operator" autocomplete="off">
+        </label>
+        <label id="add-java-label" hidden>Your Minecraft Java username
+          <input id="add-java" maxlength="16" placeholder="Optional: you'll be on the allowlist and an operator" autocomplete="off" autocapitalize="off" spellcheck="false">
+        </label>
+        <label id="add-memory-label" hidden>Memory
+          <select id="add-memory">
+            <option value="1024">1 GB: a couple of players</option>
+            <option value="2048" selected>2 GB: a family (recommended)</option>
+            <option value="4096">4 GB: lots of players or plugins</option>
+            <option value="6144">6 GB</option>
+            <option value="8192">8 GB</option>
+          </select>
         </label>
         <p class="muted small" id="add-kid-note" hidden>You'll take care of this server: turn it on and off, let friends in, change settings, back it up and restore it. Only the owner can delete it.</p>
         <label class="check">
           <input id="add-eula" type="checkbox" required>
-          <span>I accept the <a href="https://www.minecraft.net/eula" target="_blank" rel="noopener">Minecraft EULA</a>. The server is downloaded from Mojang.</span>
+          <span>I accept the <a href="https://www.minecraft.net/eula" target="_blank" rel="noopener">Minecraft EULA</a>. <span id="add-source">The server is downloaded from Mojang.</span></span>
         </label>
         <div class="row">
           <button type="submit" class="primary">Create and start</button>
@@ -180,7 +200,7 @@
       <div id="backups-overview" class="server-table"></div>
       <section class="card" id="deleted-box" data-owner-only hidden>
         <h2>Deleted servers</h2>
-        <p class="muted small">Their backups are kept, including a final one from when they were deleted. Bringing one back downloads Bedrock again and puts its world and settings back.</p>
+        <p class="muted small">Their backups are kept, including a final one from when they were deleted. Bringing one back downloads the server again and puts its world and settings back.</p>
         <p id="deleted-error" class="error" hidden></p>
         <ul id="deleted-list" class="people"></ul>
       </section>
@@ -575,6 +595,22 @@
             <button type="submit">Rename</button>
           </div>
         </form>
+
+        <section class="card" id="memory-card" data-care hidden>
+          <h3>Memory</h3>
+          <div class="row">
+            <select id="memory-select" aria-label="Memory">
+              <option value="1024">1 GB</option>
+              <option value="2048">2 GB</option>
+              <option value="3072">3 GB</option>
+              <option value="4096">4 GB</option>
+              <option value="6144">6 GB</option>
+              <option value="8192">8 GB</option>
+              <option value="12288">12 GB</option>
+            </select>
+            <span class="muted small">How much memory this Java server may use. Applies at the next start. Make sure Unraid has it free.</span>
+          </div>
+        </section>
 
         <section class="card" id="hold-card" data-care>
           <h3>Updates</h3>

@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/ScottSchneck/blockheads-control-panel/internal/servers"
 )
@@ -19,6 +20,7 @@ func (s *Server) lifecycleRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/nightly", ownerOnly(s.getNightly))
 	mux.HandleFunc("PUT /api/nightly", ownerOnly(s.putNightly))
 	mux.HandleFunc("POST /api/servers/{id}/hold-version", s.withServer(levelCare, s.holdVersion))
+	mux.HandleFunc("POST /api/servers/{id}/memory", s.withServer(levelCare, s.setMemory))
 }
 
 func (s *Server) deleteServer(w http.ResponseWriter, r *http.Request) {
@@ -104,5 +106,24 @@ func (s *Server) holdVersion(w http.ResponseWriter, r *http.Request, srv *server
 	} else {
 		s.note(r, srv, "let the server update overnight")
 	}
+	writeJSON(w, http.StatusOK, srv.Status())
+}
+
+func (s *Server) setMemory(w http.ResponseWriter, r *http.Request, srv *servers.Server) {
+	var req struct {
+		MemoryMB int `json:"memoryMB"`
+	}
+	if !readBody(w, r, &req) {
+		return
+	}
+	if !me(r).Owner && req.MemoryMB > 12288 {
+		writeError(w, http.StatusForbidden, errors.New("more than 12 GB needs the owner"))
+		return
+	}
+	if err := srv.SetMemory(req.MemoryMB); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	s.note(r, srv, "set the server's memory to "+strconv.Itoa(req.MemoryMB)+" MB")
 	writeJSON(w, http.StatusOK, srv.Status())
 }

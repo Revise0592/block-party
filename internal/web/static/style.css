@@ -560,3 +560,8 @@ label.button { margin: 0; }
 
 /* ---- Deleting servers ---- */
 .danger-zone { border-color: var(--bad-line); }
+
+/* ---- Java servers ---- */
+fieldset.edition { border: none; padding: 0; margin: 0 0 12px; }
+fieldset.edition legend { font-weight: 600; font-size: 14px; margin-bottom: 6px; padding: 0; }
+.badge.java { margin-left: 6px; }

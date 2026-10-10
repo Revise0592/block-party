@@ -15,6 +15,10 @@ import (
 // outsideProblem says why a server with these properties mustn't be open to
 // the internet, or "".
 func outsideProblem(p *properties) string {
+	return outsideProblemFor(p, false)
+}
+
+func outsideProblemFor(p *properties, java bool) string {
 	allow, ok := p.get("allow-list")
 	if !ok {
 		allow, _ = p.get("white-list")
@@ -23,6 +27,9 @@ func outsideProblem(p *properties) string {
 		return "the allowlist is off"
 	}
 	if v, ok := p.get("online-mode"); ok && !strings.EqualFold(strings.TrimSpace(v), "true") {
+		if java {
+			return "Minecraft account checks are off"
+		}
 		return "Xbox sign-in checks are off"
 	}
 	return ""
@@ -37,7 +44,7 @@ func (s *Server) OutsideProblem() string {
 	if err != nil {
 		return "its server.properties can't be read"
 	}
-	return outsideProblem(p)
+	return outsideProblemFor(p, s.isJava())
 }
 
 // outsideCommand refuses console commands that would let strangers in while
@@ -75,7 +82,7 @@ func (s *Server) SetOutside(open bool) error {
 		p, err := readProperties(s.propertiesPath())
 		problem := "its server.properties can't be read"
 		if err == nil {
-			problem = outsideProblem(p)
+			problem = outsideProblemFor(p, s.isJava())
 		}
 		if problem != "" {
 			s.filesMu.Unlock()
