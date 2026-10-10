@@ -22,6 +22,7 @@ import (
 	_ "time/tzdata" // TZ works even without the system's time zone files
 
 	"github.com/ScottSchneck/blockheads-control-panel/internal/auth"
+	"github.com/ScottSchneck/blockheads-control-panel/internal/notify"
 	"github.com/ScottSchneck/blockheads-control-panel/internal/outside"
 	"github.com/ScottSchneck/blockheads-control-panel/internal/serverlist"
 	"github.com/ScottSchneck/blockheads-control-panel/internal/servers"
@@ -70,7 +71,10 @@ func main() {
 	defer stop()
 
 	// Game servers.
+	notifier := notify.New(notify.Options{DataDir: cfg.DataDir})
+
 	mgr := servers.New(servers.Options{
+		Notify:      notifier.Send,
 		DataDir:     cfg.DataDir,
 		DownloadAPI: os.Getenv("BEDROCK_DOWNLOAD_API"),
 		Version:     version,
@@ -143,6 +147,7 @@ func main() {
 		ListName: cfg.ListName,
 		Version:  version,
 		Outside:  out,
+		Notifier: notifier,
 	}, mgr)
 	if err != nil {
 		slog.Error("web panel setup failed", "error", err)
@@ -151,11 +156,17 @@ func main() {
 
 	var wg sync.WaitGroup
 	failed := make(chan error, 2)
-	wg.Add(3)
+	wg.Add(4)
 	go func() {
 		defer wg.Done()
 		out.Run(ctx)
 	}()
+	go func() {
+		defer wg.Done()
+		notifier.Run(ctx)
+	}()
+	notifier.Send(notify.Event{Kind: notify.PanelStarted, Title: "Blockheads panel started",
+		Text: fmt.Sprintf("The panel (version %s) started, with %d server(s).", version, len(mgr.List()))})
 	go func() {
 		defer wg.Done()
 		if err := panel.Run(ctx); err != nil {

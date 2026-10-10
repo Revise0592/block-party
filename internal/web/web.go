@@ -31,6 +31,7 @@ import (
 
 	"github.com/ScottSchneck/blockheads-control-panel/internal/activity"
 	"github.com/ScottSchneck/blockheads-control-panel/internal/auth"
+	"github.com/ScottSchneck/blockheads-control-panel/internal/notify"
 	"github.com/ScottSchneck/blockheads-control-panel/internal/outside"
 	"github.com/ScottSchneck/blockheads-control-panel/internal/servers"
 )
@@ -50,6 +51,9 @@ type Options struct {
 	// Outside is outside access (friends outside the house). Tests may
 	// leave it nil; the panel then makes one that isn't running.
 	Outside *outside.Manager
+	// Notifier sends notifications; tests may leave it nil (one that
+	// doesn't send is made).
+	Notifier *notify.Notifier
 }
 
 // Server is the panel's web server.
@@ -59,6 +63,7 @@ type Server struct {
 	auth     *auth.Store
 	activity *activity.Log
 	out      *outside.Manager
+	notifier *notify.Notifier
 	log      *slog.Logger
 }
 
@@ -82,6 +87,10 @@ func New(opts Options, mgr *servers.Manager) (*Server, error) {
 	}
 	s.auth = store
 	s.activity = activity.Open(filepath.Join(opts.DataDir, "activity.jsonl"))
+	s.notifier = opts.Notifier
+	if s.notifier == nil {
+		s.notifier = notify.New(notify.Options{DataDir: opts.DataDir})
+	}
 	s.out = opts.Outside
 	if s.out == nil {
 		local, _ := netip.ParseAddr(opts.HostIP)
@@ -171,6 +180,7 @@ func (s *Server) routes() http.Handler {
 	s.outsideRoutes(mux)
 	s.addonRoutes(mux)
 	s.lifecycleRoutes(mux)
+	s.notifyRoutes(mux)
 	return s.secure(mux)
 }
 

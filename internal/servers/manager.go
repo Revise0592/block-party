@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ScottSchneck/blockheads-control-panel/internal/notify"
 	"log/slog"
 	"net/http"
 	"os"
@@ -31,6 +32,9 @@ type Options struct {
 	StopTimeout time.Duration // how long a server gets to save and stop; 30s if zero
 	Log         *slog.Logger
 	ImportDir   string // other panels' server folders, mounted read-only; "" if none
+	// Notify, when set, is told about things the owner may want to hear
+	// about (crashes, join attempts, failed backups…). It must not block.
+	Notify func(notify.Event)
 }
 
 // Manager keeps track of all servers.

@@ -217,6 +217,7 @@
         <a href="#/guide" data-owner-only><b>Setup guide</b><span class="muted">Your gamertag, how consoles join, your servers, and a checklist of what's left.</span></a>
         <a href="#/import" data-owner-only><b>Import servers</b><span class="muted">Copy servers in from Crafty Controller or another folder.</span></a>
         <a href="#/outside" data-owner-only><b>Friends outside the house</b><span class="muted">Let friends who don't live here join the servers you choose.</span></a>
+        <a href="#/notify" data-owner-only><b>Notifications</b><span class="muted">Phone, Discord, email or text messages when someone wants in, a server crashes, or a backup fails.</span></a>
         <a href="#/upkeep" data-owner-only><b>Overnight updates and restarts</b><span class="muted">Keep servers on the newest Bedrock without anyone pressing Update.</span></a>
         <a href="#/people" data-owner-only><b>People</b><span class="muted">Accounts for your kids, and which servers each one can use.</span></a>
         <a href="#/account"><b>Appearance and password</b><span class="muted">Light or dark, change your password, sign out.</span></a>
@@ -403,6 +404,21 @@
           <span id="upkeep-saved" class="muted small" hidden>Saved.</span>
         </div>
         <p id="upkeep-error" class="error" hidden></p>
+      </form>
+    </section>
+
+    <!-- Notifications (owner only) -->
+    <section id="view-notify" class="view narrow" hidden>
+      <div class="crumbs"><a href="#/help">Help</a> /</div>
+      <h1>Notifications</h1>
+      <p class="muted">Hear about what needs you without opening the panel. Turn on any of these, and choose for each what it tells you about. The same thing isn't repeated within half an hour.</p>
+      <p id="notify-error" class="error" hidden></p>
+      <form id="notify-form">
+        <div id="notify-cards"></div>
+        <div class="savebar notify-bar">
+          <span id="notify-dirty" class="muted small" hidden>Unsaved changes</span>
+          <button type="submit" class="primary" id="notify-save">Save</button>
+        </div>
       </form>
     </section>
 

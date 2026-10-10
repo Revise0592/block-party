@@ -379,9 +379,13 @@ function route() {
     parts = [];
   }
   let next = parts[0] || "servers";
+  if (view === "notify" && notifyDirty && next !== "notify") {
+    if (!confirm("Leave without saving your notification settings?")) { stay(); return; }
+    notifyDirty = false;
+  }
   if (next === "joining") next = "help";
-  if (!["servers", "backups", "help", "import", "add", "guide", "people", "outside", "upkeep", "account", "server"].includes(next)) next = "servers";
-  if ((["import", "guide", "people", "outside", "upkeep"].includes(next) && !me.owner) || (next === "add" && !me.canAdd)) {
+  if (!["servers", "backups", "help", "import", "add", "guide", "people", "outside", "upkeep", "notify", "account", "server"].includes(next)) next = "servers";
+  if ((["import", "guide", "people", "outside", "upkeep", "notify"].includes(next) && !me.owner) || (next === "add" && !me.canAdd)) {
     location.hash = "#/"; // not for this account
     return;
   }
@@ -435,6 +439,7 @@ function route() {
   if (next === "people") loadPeople();
   if (next === "outside") loadOutside(false);
   if (next === "upkeep") loadUpkeep();
+  if (next === "notify") loadNotify();
   if (next === "backups" && me.owner) loadDeleted();
   if (next === "guide") openGuide(1);
   if (next === "help") fillJoinInfo();
@@ -445,7 +450,7 @@ function setView(v) {
   view = v;
   for (const sec of document.querySelectorAll(".view")) sec.hidden = sec.id !== "view-" + v;
   // Pages without their own menu entry light up the one they're reached from.
-  const navKey = { server: "servers", add: "servers", import: "servers", guide: "help", outside: "help", upkeep: "help", people: me.owner ? "people" : "account" }[v] || v;
+  const navKey = { server: "servers", add: "servers", import: "servers", guide: "help", outside: "help", upkeep: "help", notify: "help", people: me.owner ? "people" : "account" }[v] || v;
   for (const a of document.querySelectorAll("[data-nav]")) {
     if (a.dataset.nav === navKey) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   }
@@ -907,7 +912,7 @@ $("raw-save").addEventListener("click", async () => {
   } catch (err) { showSettingsError(err); }
 });
 
-window.addEventListener("beforeunload", (ev) => { if (settingsDirty()) { ev.preventDefault(); ev.returnValue = ""; } });
+window.addEventListener("beforeunload", (ev) => { if (settingsDirty() || notifyDirty) { ev.preventDefault(); ev.returnValue = ""; } });
 
 // ---- console tab ----
 
@@ -1207,6 +1212,10 @@ $("upkeep-form").addEventListener("submit", async (ev) => {
     $("upkeep-saved").hidden = false;
     $("upkeep-error").hidden = true;
     nightlyOn = null;
+  notifyView = null;
+  notifyDirty = false;
+  for (const k of Object.keys(notifyClear)) delete notifyClear[k];
+  $("notify-cards").replaceChildren();
   } catch (err) { $("upkeep-error").textContent = err.message; $("upkeep-error").hidden = false; }
 });
 for (const id of ["upkeep-update", "upkeep-restart", "upkeep-at"]) $(id).addEventListener("input", () => { $("upkeep-saved").hidden = true; });
@@ -1218,6 +1227,164 @@ async function checkNightly() {
   try { nightlyOn = (await api("/api/nightly")).autoUpdate; } catch (_) { return; }
   $("update-auto-link").hidden = nightlyOn;
 }
+
+// ---- notifications (owner) ----
+
+let notifyView = null;   // last loaded settings (without secrets)
+let notifyDirty = false;
+const notifyClear = {};  // secrets to remove on save
+
+const channelInfo = {
+  ntfy: { title: "Phone (ntfy)", blurb: "Push notifications through the free ntfy app (Android and iPhone), no account needed." },
+  discord: { title: "Discord", blurb: "Messages in a channel of your Discord server." },
+  email: { title: "Email", blurb: "Through an email account's SMTP server. For Gmail, make an app password (Google Account, Security) and use smtp.gmail.com, port 587." },
+  sms: { title: "Text messages (Twilio)", blurb: "Texts through Twilio Programmable Messaging. Each text costs a little, so by default only crashes and failed backups are texted, at most 20 a day." },
+};
+
+function markNotifyDirty() {
+  notifyDirty = true;
+  $("notify-dirty").hidden = false;
+}
+
+async function loadNotify() {
+  try {
+    const v = await api("/api/notifications");
+    if (view !== "notify") return;
+    notifyView = v;
+    notifyDirty = false;
+    for (const k of Object.keys(notifyClear)) delete notifyClear[k];
+    renderNotify();
+    $("notify-error").hidden = true;
+  } catch (err) { $("notify-error").textContent = err.message; $("notify-error").hidden = false; }
+}
+
+function nField(label, input, wide) {
+  return el("label", { class: wide ? "wide" : "" }, label, input);
+}
+
+function nInput(obj, key, attrs = {}) {
+  const i = el("input", { value: obj[key] == null ? "" : String(obj[key]), autocomplete: "off", autocapitalize: "off", spellcheck: "false", ...attrs });
+  i.addEventListener("input", () => {
+    obj[key] = attrs.type === "number" ? Number(i.value) : i.value;
+    markNotifyDirty();
+  });
+  return i;
+}
+
+function nList(obj, key, attrs = {}) {
+  const i = el("input", { value: (obj[key] || []).join(", "), autocomplete: "off", autocapitalize: "off", spellcheck: "false", ...attrs });
+  i.addEventListener("input", () => {
+    obj[key] = i.value.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
+    markNotifyDirty();
+  });
+  return i;
+}
+
+// nSecret is a password-like field: empty keeps what's saved.
+function nSecret(ch, obj, key, name, label, placeholder) {
+  const saved = notifyView.secrets[name] && !notifyClear[name];
+  const i = el("input", { type: "password", autocomplete: "new-password", placeholder: saved ? "Saved; type to replace it" : placeholder });
+  i.addEventListener("input", () => { obj[key] = i.value; markNotifyDirty(); });
+  const note = saved ? el("span", { class: "secret-note" }, "Saved. ",
+    el("a", { href: "#", onclick: (ev) => {
+      ev.preventDefault();
+      notifyClear[name] = true;
+      obj[key] = "";
+      markNotifyDirty();
+      ev.target.closest(".notify-card").replaceWith(notifyCard(ch)); // just this card
+    } }, "Remove it")) : null;
+  return el("label", { class: "wide" }, label, i, note);
+}
+
+function notifyCard(ch) {
+  const c = notifyView[ch];
+  const info = channelInfo[ch];
+  const on = el("input", { type: "checkbox", checked: c.on });
+  on.addEventListener("change", () => { c.on = on.checked; markNotifyDirty(); card.classList.toggle("off", !c.on); });
+  const fields = [];
+  if (ch === "ntfy") {
+    const link = `${c.server}/${c.topic}`;
+    fields.push(el("p", { class: "muted small wide" }, "In the ntfy app, add a subscription to the topic below (on the server below, if you changed it). Anyone who knows the topic can read the messages, so keep it hard to guess. Web: ",
+      el("a", { href: link, target: "_blank", rel: "noopener" }, link)));
+    fields.push(nField("Topic", nInput(c, "topic", { class: "mono", maxlength: "64" })));
+    fields.push(nField("Server", nInput(c, "server", { placeholder: "https://ntfy.sh" })));
+    fields.push(nSecret(ch, c, "token", "ntfy.token", "Access token (only for a private ntfy server)", "Optional"));
+  } else if (ch === "discord") {
+    fields.push(el("p", { class: "muted small wide" }, "In Discord: the channel's settings, Integrations, Webhooks, New Webhook, Copy Webhook URL. Paste it here."));
+    fields.push(nSecret(ch, c, "webhook", "discord.webhook", "Webhook link", "https://discord.com/api/webhooks/…"));
+  } else if (ch === "email") {
+    fields.push(nField("SMTP server", nInput(c, "host", { placeholder: "smtp.gmail.com" })));
+    fields.push(nField("Port", nInput(c, "port", { type: "number", min: "1", max: "65535", placeholder: "587" })));
+    fields.push(nField("Username", nInput(c, "username", { placeholder: "Usually your email address" })));
+    fields.push(nField("From", nInput(c, "from", { placeholder: "you@gmail.com", type: "email" })));
+    fields.push(nSecret(ch, c, "password", "email.password", "Password (an app password for Gmail)", "Password"));
+    fields.push(nField("Send to (separate several with commas)", nList(c, "to", { placeholder: "you@example.com" }), true));
+  } else if (ch === "sms") {
+    fields.push(el("p", { class: "muted small wide" }, "From the Twilio Console: the Account SID and Auth Token (Account Info), and a phone number you bought there or a Messaging Service SID. US numbers need A2P 10DLC registration or a verified toll-free number before texts are delivered."));
+    fields.push(nField("Account SID", nInput(c, "accountSid", { class: "mono", placeholder: "AC…" })));
+    fields.push(nField("From (number or MG… SID)", nInput(c, "from", { placeholder: "+1 555 123 4567" })));
+    fields.push(nSecret(ch, c, "authToken", "sms.authToken", "Auth Token", "Auth Token"));
+    fields.push(nField("Text these numbers (separate with commas)", nList(c, "to", { placeholder: "+1 555 987 6543" }), true));
+    fields.push(nField("At most this many texts a day", nInput(c, "maxPerDay", { type: "number", min: "1", max: "500" })));
+  }
+  const events = notifyView.events.map((e) => {
+    const box = el("input", { type: "checkbox", checked: (c.events || []).includes(e.kind) });
+    box.addEventListener("change", () => {
+      const set = new Set(c.events || []);
+      if (box.checked) set.add(e.kind); else set.delete(e.kind);
+      c.events = notifyView.events.map((x) => x.kind).filter((k) => set.has(k));
+      markNotifyDirty();
+    });
+    return el("label", { class: "check" }, box, el("span", {}, e.label));
+  });
+  const test = btn("Send a test", async (ev) => {
+    const b = ev.currentTarget;
+    if (notifyDirty) { alert("Save first, then send a test."); return; }
+    b.disabled = true;
+    b.textContent = "Sending…";
+    try {
+      await post(`/api/notifications/test/${ch}`);
+      b.textContent = "Sent: check it arrived";
+    } catch (err) {
+      b.textContent = "Send a test";
+      alert(`${info.title}: ${err.message}`);
+    }
+    b.disabled = false;
+    setTimeout(() => { b.textContent = "Send a test"; }, 6000);
+  });
+  const card = el("section", { class: "card notify-card" + (c.on ? "" : " off") },
+    el("div", { class: "row between" }, el("h2", {}, info.title), el("label", { class: "switch" }, on, el("span", {}, "On"))),
+    el("p", { class: "muted small" }, info.blurb),
+    el("div", { class: "fields" }, ...fields),
+    el("fieldset", {}, el("legend", {}, "Tell me when"), el("div", { class: "events" }, ...events)),
+    el("div", { class: "row" }, test));
+  return card;
+}
+
+function renderNotify() {
+  $("notify-cards").replaceChildren(...["ntfy", "discord", "email", "sms"].map(notifyCard));
+  $("notify-dirty").hidden = !notifyDirty;
+}
+
+$("notify-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  if (!notifyView) return;
+  const b = $("notify-save");
+  b.disabled = true;
+  try {
+    const { ntfy, discord, email, sms } = notifyView;
+    const v = await api("/api/notifications", { method: "PUT", body: JSON.stringify({ settings: { ntfy, discord, email, sms }, clear: notifyClear }) });
+    notifyView = v;
+    notifyDirty = false;
+    for (const k of Object.keys(notifyClear)) delete notifyClear[k];
+    renderNotify();
+    $("notify-error").hidden = true;
+    $("notify-dirty").hidden = false;
+    $("notify-dirty").textContent = "Saved.";
+    setTimeout(() => { if (!notifyDirty) $("notify-dirty").hidden = true; $("notify-dirty").textContent = "Unsaved changes"; }, 2500);
+  } catch (err) { $("notify-error").textContent = err.message; $("notify-error").hidden = false; $("notify-error").scrollIntoView({ block: "nearest" }); }
+  b.disabled = false;
+});
 
 // ---- add-ons tab ----
 

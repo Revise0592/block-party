@@ -131,7 +131,7 @@ func (s *Server) nightly(now time.Time, plan Nightly, latest string) {
 	case plan.AutoUpdate && version != "" && !preview && !hold && versionNewer(latest, version):
 		s.markNightly(night)
 		s.say(fmt.Sprintf("Updating to Bedrock %s overnight (nobody is playing).", latest))
-		if err := s.Update(); err != nil {
+		if err := s.UpdateOvernight(); err != nil {
 			s.say("The overnight update didn't start: " + err.Error())
 		} else {
 			s.m.log.Info("overnight update", "id", s.meta.ID, "from", version, "to", latest)

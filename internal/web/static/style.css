@@ -542,5 +542,21 @@ table.ports .ok { color: var(--ok); }
 .people li.off .who > span:first-child { color: var(--muted); }
 label.button { margin: 0; }
 
+/* ---- Notifications ---- */
+.notify-card .row.between { align-items: center; }
+.notify-card .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; margin-top: 12px; }
+.notify-card .fields .wide { grid-column: 1 / -1; }
+.notify-card .fields p.wide { margin: 0 0 10px; }
+.notify-card fieldset { border: none; padding: 0; margin: 4px 0 12px; }
+.notify-card fieldset legend { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+.notify-card .events { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 16px; }
+.notify-card .events label { margin: 0; }
+.notify-card .secret-note { font-size: 12px; color: var(--muted); }
+.notify-card.off .fields, .notify-card.off fieldset { opacity: .6; }
+.notify-bar[hidden] { display: none !important; }
+@media (max-width: 720px) {
+  .notify-card .fields, .notify-card .events { grid-template-columns: 1fr; }
+}
+
 /* ---- Deleting servers ---- */
 .danger-zone { border-color: var(--bad-line); }

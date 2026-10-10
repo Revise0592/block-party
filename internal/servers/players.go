@@ -1,6 +1,8 @@
 package servers
 
 import (
+	"github.com/ScottSchneck/blockheads-control-panel/internal/notify"
+
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -555,6 +557,15 @@ func (s *Server) noteJoinAttempt(name, xuid string, verified bool) {
 		s.attempts = s.attempts[len(s.attempts)-maxAttempts:]
 	}
 	s.addLineLocked("[Panel] " + name + " tried to join but isn't on the allowlist. Allow them on the Players tab.")
+	text := name + " tried to join " + s.meta.Name + " but isn't on its allowlist. Let them in on the server's Players tab."
+	key := "join/" + s.meta.ID + "/" + strings.ToLower(name)
+	if !verified {
+		// Anyone can type any name without a checked sign-in, so these are
+		// grouped per server: made-up names can't flood the owner.
+		text += " (Their Xbox sign-in wasn't checked, so the name may not be theirs.)"
+		key = "join/" + s.meta.ID + "/unverified"
+	}
+	s.notifyLocked(notify.JoinAttempt, name+" wants to join "+s.meta.Name, text, key)
 }
 
 // DismissAttempt removes someone from the tried-to-join list.

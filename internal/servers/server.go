@@ -1,6 +1,8 @@
 package servers
 
 import (
+	"github.com/ScottSchneck/blockheads-control-panel/internal/notify"
+
 	"bufio"
 	"context"
 	"encoding/json"
@@ -121,6 +123,8 @@ type Server struct {
 	playing           string
 	deleted           bool // removed by DeleteServer; nothing more happens to it
 	startedAt         time.Time
+	autoUpdating      bool      // the update running was started overnight (for its notification)
+	backupFailNoted   bool      // a failed scheduled backup was notified; reset by a good one
 	lbTime, lbChecked time.Time // cached newest backup time (see lastBackup)
 }
 
@@ -273,6 +277,8 @@ func (s *Server) onLineLocked(line string) {
 		mm := rePlayerJoin.FindStringSubmatch(line)
 		s.players[mm[1]] = Player{Name: mm[1], XUID: mm[2], Since: time.Now()}
 		s.playedSinceBackup = true
+		s.notifyLocked(notify.PlayerJoined, mm[1]+" is playing on "+s.meta.Name, mm[1]+" joined "+s.meta.Name+".",
+			"play/"+s.meta.ID+"/"+strings.ToLower(mm[1]))
 		s.m.saves.Add(1)
 		go func(name, xuid string) {
 			defer s.m.saves.Done()
@@ -472,9 +478,14 @@ func (s *Server) onExit(cmd *exec.Cmd, err error) {
 		s.state = StateCrashed
 		s.message = fmt.Sprintf("Stopped after crashing %d times in %d minutes. Check the console, then press Start.", len(s.crashes), int(crashWindow.Minutes()))
 		s.addLineLocked("[Panel] " + s.message)
+		if s.m.ctx.Err() == nil {
+			s.notifyLocked(notify.Crash, s.meta.Name+" keeps crashing", s.message, "crashstop/"+s.meta.ID)
+		}
 		return
 	}
 	wait := time.Duration(len(s.crashes)*len(s.crashes)) * crashBackoff // 5s, 20s, 45s
+	s.notifyLocked(notify.Crash, s.meta.Name+" crashed",
+		fmt.Sprintf("%s stopped unexpectedly (%s). The panel is starting it again.", s.meta.Name, code), "crash/"+s.meta.ID)
 	s.state = StateStarting
 	s.message = "Restarting after a crash"
 	s.addLineLocked(fmt.Sprintf("[Panel] The server stopped unexpectedly (%s). Restarting in %s…", code, wait))
@@ -651,7 +662,13 @@ func (s *Server) installAndStart(extra []string) {
 // Update backs the server up, downloads the current version and starts it
 // again if it was running and nobody pressed Stop meanwhile. It returns
 // straight away; follow the console.
-func (s *Server) Update() error {
+func (s *Server) Update() error { return s.startUpdate(false) }
+
+// UpdateOvernight is Update started by overnight upkeep (its result is
+// sent as a notification).
+func (s *Server) UpdateOvernight() error { return s.startUpdate(true) }
+
+func (s *Server) startUpdate(auto bool) error {
 	if !s.m.beginWork() {
 		return errShuttingDown
 	}
@@ -662,6 +679,7 @@ func (s *Server) Update() error {
 		return errBusy
 	}
 	s.busy = true
+	s.autoUpdating = auto
 	wasRunning := s.cmd != nil || s.restart != nil
 	s.mu.Unlock()
 
@@ -686,6 +704,10 @@ func (s *Server) Update() error {
 			msg := "Update failed partway: " + partial.Error() + " Restore the backup " + partial.backup + " before starting the server."
 			_ = os.WriteFile(s.incompleteMarker(), []byte(msg+"\n"), 0o644)
 			s.failLocked(msg)
+			if s.autoUpdating {
+				s.notifyLocked(notify.Updated, "Overnight update of "+s.meta.Name+" failed", msg, "")
+			}
+			s.autoUpdating = false
 			s.mu.Unlock()
 			s.m.log.Error("update failed partway", "id", s.meta.ID, "error", err)
 			return
@@ -693,9 +715,16 @@ func (s *Server) Update() error {
 			s.notice = "Update failed: " + err.Error() + " Nothing was changed."
 			s.addLineLocked("[Panel] " + s.notice)
 			s.m.log.Error("update failed", "id", s.meta.ID, "error", err)
+			if s.autoUpdating {
+				s.notifyLocked(notify.Updated, "Overnight update of "+s.meta.Name+" failed", s.notice, "")
+			}
 		default:
 			s.notice = ""
+			if s.autoUpdating {
+				s.notifyLocked(notify.Updated, s.meta.Name+" was updated", s.meta.Name+" was updated overnight to Bedrock "+s.meta.Version+".", "")
+			}
 		}
+		s.autoUpdating = false
 		if _, statErr := os.Stat(s.binary()); statErr != nil {
 			s.state = StateError
 		} else {

@@ -114,6 +114,8 @@ type Settings struct {
 	SetupDone bool `json:"setupDone,omitempty"`
 	// Nightly is overnight updates and restarts (nil: off).
 	Nightly *Nightly `json:"nightly,omitempty"`
+	// AnnouncedVersion is the Bedrock version last announced to the owner.
+	AnnouncedVersion string `json:"announcedVersion,omitempty"`
 }
 
 func (m *Manager) settingsPath() string { return filepath.Join(m.opts.DataDir, "panel-settings.json") }

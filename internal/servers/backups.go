@@ -1,6 +1,8 @@
 package servers
 
 import (
+	"github.com/ScottSchneck/blockheads-control-panel/internal/notify"
+
 	"archive/tar"
 	"compress/gzip"
 	"context"
@@ -1103,6 +1105,15 @@ func (s *Server) scheduledBackup(now time.Time) {
 	if idle {
 		s.m.log.Debug("scheduled backup skipped: nobody has played since the last one", "id", s.meta.ID)
 	} else if _, err := s.backUp("scheduled", plan.Keep); err != nil {
+		// Told once until a backup works again, not every retry.
+		s.mu.Lock()
+		first := !s.backupFailNoted
+		s.backupFailNoted = true
+		s.mu.Unlock()
+		if first {
+			s.notify(notify.BackupFailed, "Backup of "+s.Status().Name+" failed",
+				err.Error()+" The panel keeps trying every 15 minutes and will only tell you again once a backup has worked.", "")
+		}
 		// Try again in a while rather than wait a whole period, but not
 		// every minute (a full disk would fill the log).
 		s.mu.Lock()
@@ -1112,6 +1123,7 @@ func (s *Server) scheduledBackup(now time.Time) {
 	}
 	s.mu.Lock()
 	s.meta.LastScheduledBackup = now
+	s.backupFailNoted = false
 	s.mu.Unlock()
 	if err := s.saveMeta(); err != nil {
 		s.m.log.Warn("could not save server details", "id", s.meta.ID, "error", err)

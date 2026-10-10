@@ -40,6 +40,7 @@ func (m *Manager) LatestRelease() (string, error) {
 				return
 			}
 			c.version, c.err = v, nil
+			go m.announceRelease(v)
 		}()
 	}
 	return c.version, c.err

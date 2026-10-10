@@ -391,3 +391,25 @@ func TestOnlyTheOwnerDeletesServers(t *testing.T) {
 		t.Errorf("deleted list: %s", w.Body)
 	}
 }
+
+func TestNotificationSettingsAreTheOwners(t *testing.T) {
+	s, _ := newTestServer(t)
+	h := s.routes()
+	owner := ownerCookie(s)
+	call(h, "POST", "/api/users", `{"username":"Ava","password":"ava password 1"}`, owner)
+	ava := sessionFrom(t, call(h, "POST", "/api/auth/login", `{"username":"Ava","password":"ava password 1"}`))
+	if w := call(h, "GET", "/api/notifications", "", ava); w.Code != 403 {
+		t.Errorf("kid reads notifications: %d", w.Code)
+	}
+	body := `{"settings":{"discord":{"on":true,"webhook":"https://discord.com/api/webhooks/1/secret","events":["crash"]}}}`
+	w := call(h, "PUT", "/api/notifications", body, owner)
+	if w.Code != 200 || strings.Contains(w.Body.String(), "1/secret") || !strings.Contains(w.Body.String(), `"discord.webhook":true`) {
+		t.Errorf("put: %d %s", w.Code, w.Body)
+	}
+	if w := call(h, "GET", "/api/notifications", "", owner); strings.Contains(w.Body.String(), "1/secret") {
+		t.Errorf("secret shown: %s", w.Body)
+	}
+	if w := call(h, "POST", "/api/notifications/test/email", "", owner); w.Code != 502 || !strings.Contains(w.Body.String(), "save first") {
+		t.Errorf("test without settings: %d %s", w.Code, w.Body)
+	}
+}

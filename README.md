@@ -50,6 +50,10 @@ Switch players can join without extra apps.
   UPnP (or lists the forwards to add by hand), and writes an invite that tells
   a friend how to join from a PC, phone or console. See
   [Friends outside the house](#friends-outside-the-house).
+- **Notifications** to your phone (ntfy), a Discord channel, email, or text
+  messages (Twilio), in any combination, each with its own choice of events:
+  someone wants to join, a server crashes, a backup fails, and more. See
+  [Notifications](#notifications).
 - **Overnight updates and restarts.** Optionally, the panel updates servers
   to each new Bedrock version, and restarts them, in a window each night, but
   only when nobody is playing. See [Overnight updates](#overnight-updates-and-restarts).
@@ -203,6 +207,32 @@ the allowlist.
 Consoles outside only see the servers open to them in the list, and are sent
 to your hostname. The panel re-checks everything every minute, and closes the
 forwards it made when it stops.
+
+### Notifications
+
+Under **Help → Notifications** (owner only), turn on any of:
+
+- **Phone (ntfy).** Install the free ntfy app and subscribe to the topic the
+  panel shows (it makes up one that's hard to guess). Works with ntfy.sh or
+  your own ntfy server (with an access token if it's private).
+- **Discord.** Paste a channel's webhook link (channel settings,
+  Integrations, Webhooks). Messages never ping anyone.
+- **Email.** Any SMTP server, on port 587 (STARTTLS) or 465 (TLS). For
+  Gmail use smtp.gmail.com with an app password. A password is never sent
+  over an unencrypted connection.
+- **Text messages (Twilio).** Your Account SID, Auth Token, and a Twilio
+  number or Messaging Service SID, plus the numbers to text. Texts are
+  capped per day (20 unless you change it). US numbers need A2P 10DLC
+  registration, or a verified toll-free number, before carriers deliver
+  them.
+
+Each one has its own list of what to tell you about: someone not on the
+allowlist tries to join, a server crashes, a scheduled backup fails, an
+overnight update finishes or fails, a new Bedrock version is out (when
+overnight updates are off), someone starts playing, or the panel starts.
+The same thing isn't repeated within half an hour. **Send a test** checks a
+channel. Passwords and tokens are kept in `/data/notify.json`, readable only
+by the panel, and never shown in the page again.
 
 ### Overnight updates and restarts
 
