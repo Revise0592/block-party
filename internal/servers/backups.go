@@ -902,6 +902,7 @@ func (s *Server) restore(archive *os.File, name string) error {
 		return err
 	}
 	_ = os.RemoveAll(old)
+	s.notePluginFiles() // the backup may hold older console plugins
 	if full {
 		_ = os.Remove(s.incompleteMarker())
 		_ = os.Chmod(s.binary(), 0o755)

@@ -68,6 +68,12 @@ type Status struct {
 	Build    int    `json:"build,omitempty"`
 	MemoryMB int    `json:"memoryMB,omitempty"`
 	UpdateTo string `json:"updateTo,omitempty"`
+	// Consoles: console players are turned on (Java servers). ConsolesLive:
+	// the running server has Geyser loaded, so consoles can join now.
+	Consoles     bool `json:"consoles,omitempty"`
+	ConsolesLive bool `json:"consolesLive,omitempty"`
+	// ConsolesUpdate: a newer Geyser is out (Update installs it).
+	ConsolesUpdate bool `json:"consolesUpdate,omitempty"`
 }
 
 const (
@@ -129,9 +135,12 @@ type Server struct {
 	javaSaved         chan struct{} // a Java server finished "save-all" during a backup
 	deleted           bool          // removed by DeleteServer; nothing more happens to it
 	startedAt         time.Time
-	autoUpdating      bool      // the update running was started overnight (for its notification)
-	backupFailNoted   bool      // a failed scheduled backup was notified; reset by a good one
-	lbTime, lbChecked time.Time // cached newest backup time (see lastBackup)
+	autoUpdating      bool       // the update running was started overnight (for its notification)
+	backupFailNoted   bool       // a failed scheduled backup was notified; reset by a good one
+	lbTime, lbChecked time.Time  // cached newest backup time (see lastBackup)
+	pluginsMu         sync.Mutex // one console plugin install at a time
+	consolesLive      bool       // the running process was started with Geyser and Floodgate
+	updatedConsoles   bool       // the update running installed new console plugins (for its notification)
 }
 
 func newServer(m *Manager, meta Meta) *Server {
@@ -186,6 +195,9 @@ func (s *Server) Status() Status {
 		if r := s.m.LatestPaper(); st.Version != "" && javaNewer(r, st.Version, st.Build) {
 			st.UpdateTo = r.label()
 		}
+		st.ConsolesUpdate = s.consolePluginsBehindLocked()
+		st.Consoles = s.consolesOnLocked()
+		st.ConsolesLive = st.Consoles && s.consolesLive && s.cmd != nil && s.state == StateRunning
 	}
 	for _, p := range s.players {
 		st.Players = append(st.Players, p)
@@ -338,6 +350,7 @@ func (s *Server) Start() error {
 	if s.m.ctx.Err() != nil {
 		return errShuttingDown
 	}
+	s.applyConsoleFileChanges()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.busy {
@@ -381,6 +394,10 @@ func (s *Server) startLocked() error {
 	if s.isJava() {
 		if err := s.applyJavaProperties(false); err != nil {
 			s.addLineLocked("[Panel] Couldn't update server.properties: " + err.Error())
+		}
+		s.consolesLive = s.consolesOnLocked() && s.consolesInstalled()
+		if s.consolesOnLocked() && !s.consolesLive {
+			s.addLineLocked("[Panel] Console support isn't installed yet, so only Java players can join. Use Update now to install it.")
 		}
 		java, args, err := s.javaCommand()
 		if err != nil {
@@ -684,7 +701,11 @@ func (s *Server) installAndStart(extra []string) {
 	s.mu.Unlock()
 	ops := extra
 	if owner := s.m.Settings().OwnerGamertag; owner != "" && !s.isJava() {
-		ops = append([]string{owner}, extra...) // an Xbox gamertag: Bedrock only
+		ops = append([]string{owner}, extra...) // an Xbox gamertag
+	} else if owner != "" && s.ConsolesOn() && s.consolesInstalled() {
+		if _, javaName, err := consoleIDs(owner); err == nil {
+			ops = append(ops, javaName) // the owner on a console
+		}
 	}
 	for i, name := range ops {
 		if i > 0 && strings.EqualFold(name, ops[0]) {
@@ -723,6 +744,8 @@ func (s *Server) startUpdate(auto bool) error {
 	}
 	s.busy = true
 	s.autoUpdating = auto
+	s.updatedConsoles = false
+	versionBefore, buildBefore := s.meta.Version, s.meta.Build
 	wasRunning := s.cmd != nil || s.restart != nil
 	s.mu.Unlock()
 
@@ -768,7 +791,11 @@ func (s *Server) startUpdate(auto bool) error {
 				if s.isJava() {
 					what = fmt.Sprintf("Minecraft Java %s (Paper build %d)", s.meta.Version, s.meta.Build)
 				}
-				s.notifyLocked(notify.Updated, s.meta.Name+" was updated", s.meta.Name+" was updated overnight to "+what+".", "")
+				text := s.meta.Name + " was updated overnight to " + what + "."
+				if s.isJava() && versionBefore == s.meta.Version && buildBefore == s.meta.Build && s.updatedConsoles {
+					text = s.meta.Name + "'s console support (Geyser) was updated overnight, so consoles on the newest Minecraft can keep joining."
+				}
+				s.notifyLocked(notify.Updated, s.meta.Name+" was updated", text, "")
 			}
 		}
 		s.autoUpdating = false

@@ -187,6 +187,9 @@ func (m *Manager) NoteMenuPick(port int, name, xuid string, verified bool) {
 		s.mu.Unlock()
 		if match {
 			m.people.seen(name, xuid, "", verified)
+			if s.isJava() {
+				return // the Java server notes them itself if it turns them away
+			}
 			m.saves.Add(1)
 			go func() {
 				defer m.saves.Done()

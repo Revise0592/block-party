@@ -119,6 +119,7 @@ func (s *Server) nightly(now time.Time, plan Nightly, latest string) {
 		len(s.players) > 0 || s.state == StateImporting || s.state == StateRestoring || s.state == StateError
 	version, preview, hold := s.meta.Version, s.meta.Preview, s.meta.HoldVersion
 	java, build := s.isJava(), s.meta.Build
+	consolesBehind := s.consolePluginsBehindLocked()
 	running := s.cmd != nil && s.state == StateRunning
 	upFor := time.Since(s.startedAt)
 	s.mu.Unlock()
@@ -147,6 +148,16 @@ func (s *Server) nightly(now time.Time, plan Nightly, latest string) {
 			s.say("The overnight update didn't start: " + err.Error())
 		} else {
 			s.m.log.Info("overnight update", "id", s.meta.ID, "from", version, "to", latest)
+		}
+	case plan.AutoUpdate && consolesBehind:
+		// New console support (Geyser keeps up with Bedrock updates, which
+		// consoles install by themselves). A held server keeps its version.
+		s.markNightly(night)
+		s.say("Updating console support overnight (nobody is playing).")
+		if err := s.UpdateOvernight(); err != nil {
+			s.say("The overnight update didn't start: " + err.Error())
+		} else {
+			s.m.log.Info("overnight console support update", "id", s.meta.ID)
 		}
 	case plan.DailyRestart && running && upFor > time.Hour:
 		s.markNightly(night)

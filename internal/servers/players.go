@@ -33,6 +33,9 @@ type PlayersView struct {
 	Attempts         []JoinAttempt `json:"attempts"`
 	Running          bool          `json:"running"`
 	Java             bool          `json:"java,omitempty"` // names are Minecraft Java usernames
+	// Consoles: console players can be added too (a Java server with
+	// console support; their names start with ".").
+	Consoles bool `json:"consoles,omitempty"`
 }
 
 // ListedName is a player on the allowlist or an operator.
@@ -40,6 +43,7 @@ type ListedName struct {
 	Name    string `json:"name"`
 	XUID    string `json:"xuid,omitempty"`
 	Pending bool   `json:"pending,omitempty"` // operator waiting for the player's first join
+	Console bool   `json:"console,omitempty"` // a console player on a Java server
 }
 
 // JoinAttempt is someone who tried to join but isn't on the allowlist.
@@ -238,11 +242,11 @@ func (s *Server) AllowlistAdd(name, xuid string) error {
 	if s.isJava() {
 		pending, err := s.javaChange(name, "allow")
 		if err == nil {
-			s.dismissAttempt(name)
+			s.dismissAttempt(javaListName(name))
 			if pending {
-				s.say(name + " will be added to the allowlist when the server next starts (their account couldn't be looked up now).")
+				s.say(whoName(name) + " will be added to the allowlist when the server next starts (their account couldn't be looked up now).")
 			} else {
-				s.say(name + " was added to the allowlist.")
+				s.say(whoName(name) + " was added to the allowlist.")
 			}
 		}
 		return err
@@ -287,7 +291,7 @@ func (s *Server) AllowlistRemove(name string) error {
 	if s.isJava() {
 		_, err := s.javaChange(name, "unallow")
 		if err == nil {
-			s.say(name + " was removed from the allowlist.")
+			s.say(whoName(name) + " was removed from the allowlist.")
 		}
 		return err
 	}
@@ -372,9 +376,13 @@ func (s *Server) OpAdd(name string) (pending bool, err error) {
 		pending, err = s.javaChange(name, "op")
 		if err == nil {
 			if pending {
-				s.say(name + " will be made an operator when the server next starts.")
+				when := "when the server next starts"
+				if isConsoleName(name) {
+					when = "when they next join"
+				}
+				s.say(whoName(name) + " will be made an operator " + when + ".")
 			} else {
-				s.say(name + " is now an operator.")
+				s.say(whoName(name) + " is now an operator.")
 			}
 		}
 		return pending, err
@@ -422,7 +430,7 @@ func (s *Server) OpRemove(key string) error {
 	if s.isJava() {
 		_, err := s.javaChange(key, "deop")
 		if err == nil {
-			s.say(key + " is no longer an operator.")
+			s.say(whoName(key) + " is no longer an operator.")
 		}
 		return err
 	}
@@ -537,7 +545,7 @@ func (s *Server) onJoin(name, xuid string) {
 func (s *Server) Kick(name, reason string) error {
 	var err error
 	if s.isJava() {
-		name, err = cleanJavaName(name)
+		name, err = cleanJavaPlayer(name)
 	} else {
 		name, err = cleanGamertag(name)
 	}
@@ -566,7 +574,7 @@ func (s *Server) Message(name, text string) error {
 		return s.Command("say " + text)
 	}
 	if s.isJava() {
-		name, err := cleanJavaName(name)
+		name, err := cleanJavaPlayer(name)
 		if err != nil {
 			return err
 		}
@@ -638,8 +646,12 @@ func (s *Server) noteJoinAttempt(name, xuid string, verified bool) {
 	if len(s.attempts) > maxAttempts {
 		s.attempts = s.attempts[len(s.attempts)-maxAttempts:]
 	}
-	s.addLineLocked("[Panel] " + name + " tried to join but isn't on the allowlist. Allow them on the Players tab.")
-	text := name + " tried to join " + s.meta.Name + " but isn't on its allowlist. Let them in on the server's Players tab."
+	who := name
+	if s.isJava() {
+		who = whoName(name)
+	}
+	s.addLineLocked("[Panel] " + who + " tried to join but isn't on the allowlist. Allow them on the Players tab.")
+	text := who + " tried to join " + s.meta.Name + " but isn't on its allowlist. Let them in on the server's Players tab."
 	key := "join/" + s.meta.ID + "/" + strings.ToLower(name)
 	if !verified {
 		// Anyone can type any name without a checked sign-in, so these are
@@ -647,7 +659,7 @@ func (s *Server) noteJoinAttempt(name, xuid string, verified bool) {
 		text += " (Their Xbox sign-in wasn't checked, so the name may not be theirs.)"
 		key = "join/" + s.meta.ID + "/unverified"
 	}
-	s.notifyLocked(notify.JoinAttempt, name+" wants to join "+s.meta.Name, text, key)
+	s.notifyLocked(notify.JoinAttempt, who+" wants to join "+s.meta.Name, text, key)
 }
 
 // DismissAttempt removes someone from the tried-to-join list.

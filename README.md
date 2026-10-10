@@ -98,7 +98,7 @@ Switch players can join without extra apps.
 
 ## Coming next
 
-Consoles joining Java servers (Geyser), Java plugins, then Hytale.
+Java plugins (search and install from Hangar), then Hytale.
 
 ## Install
 
@@ -239,8 +239,29 @@ and to a new Minecraft version when Paper has a stable build for it; worlds
 can't go back to an older version afterwards, so the backup made first is the
 way back.
 
-For now Java servers don't show in the console server list (Bedrock players
-can't join them yet), and the Add-ons tab is for Bedrock servers.
+The Add-ons tab is for Bedrock servers.
+
+#### Consoles on Java servers
+
+Java servers let Bedrock players in too (Xbox, PlayStation, Switch, phones,
+tablets and Windows). The panel installs and keeps up to date three plugins:
+[Geyser](https://geysermc.org) (translates between Bedrock and Java),
+Floodgate (lets those players in with their Xbox sign-in, no Java account
+needed) and [ViaVersion](https://hangar.papermc.io/ViaVersion/ViaVersion)
+(lets Geyser in while Paper is on a slightly older Minecraft than Geyser
+speaks). Turn it off per server under **Settings → Console players**.
+
+- Consoles use the **same port**, over UDP (Java players use TCP), and the
+  server shows up in the console server list while it runs.
+- On the **Players** tab, pick **Console, phone or tablet** and type their
+  gamertag. On the server they're called `.Gamer_Tag` (a dot in front,
+  spaces become `_`), and show with a *console* badge. A console player is
+  made an operator when they next join.
+- Friends outside: opening the server forwards both TCP and UDP, and the
+  invite covers PCs and consoles.
+- Bedrock updates often and consoles update themselves, so Geyser has to
+  keep up: a new Geyser version shows as an update ready, and overnight
+  updates install it (even on a server whose Minecraft version is held).
 
 ### Notifications
 

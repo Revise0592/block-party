@@ -53,6 +53,20 @@ type Server struct {
 	Open    bool   // the server is marked open to friends outside
 	Problem string // why it can't be open right now ("the allowlist is off"), or ""
 	Java    bool   // a Java server: its port is TCP
+	// JavaConsoles: a Java server that also takes console players (Geyser),
+	// on the same port number over UDP.
+	JavaConsoles bool
+}
+
+// Protocols returns the protocols the server's port needs forwarded.
+func (s Server) Protocols() []string {
+	switch {
+	case s.Java && s.JavaConsoles:
+		return []string{"TCP", "UDP"}
+	case s.Java:
+		return []string{"TCP"}
+	}
+	return []string{"UDP"}
 }
 
 // Port is one forward on the router.
@@ -375,11 +389,9 @@ func (m *Manager) reconcile(ctx context.Context) {
 		if s.Open && s.Problem == "" && set.Enabled {
 			ss.Reached = true
 			open[s.Port] = true
-			proto := "UDP"
-			if s.Java {
-				proto = "TCP"
+			for _, proto := range s.Protocols() {
+				want = append(want, Port{Port: s.Port, Proto: proto, For: s.Name})
 			}
-			want = append(want, Port{Port: s.Port, Proto: proto, For: s.Name})
 		}
 		st.Servers = append(st.Servers, ss)
 	}

@@ -611,6 +611,13 @@
             <span class="muted small">How much memory this Java server may use. Applies at the next start. Make sure Unraid has it free.</span>
           </div>
         </section>
+        <section class="card" id="consoles-card" data-care hidden>
+          <div class="row between">
+            <h3>Console players</h3>
+            <label class="switch"><input id="consoles-on" type="checkbox"> <span id="consoles-on-label">On</span></label>
+          </div>
+          <p id="consoles-help" class="muted small"></p>
+        </section>
 
         <section class="card" id="hold-card" data-care>
           <h3>Updates</h3>
@@ -672,6 +679,10 @@
           </div>
           <p id="allow-help" class="muted small"></p>
           <form id="allow-form" class="row">
+            <select id="allow-kind" aria-label="Plays on" hidden>
+              <option value="java">PC (Java)</option>
+              <option value="console">Console, phone or tablet</option>
+            </select>
             <input id="allow-name" maxlength="32" placeholder="Gamertag" autocomplete="off" aria-label="Gamertag to allow">
             <button type="submit" class="primary">Add</button>
           </form>
@@ -682,6 +693,10 @@
           <h3>Operators</h3>
           <p class="muted small">Operators can use commands and change game settings in the world.</p>
           <form id="op-form" class="row">
+            <select id="op-kind" aria-label="Plays on" hidden>
+              <option value="java">PC (Java)</option>
+              <option value="console">Console, phone or tablet</option>
+            </select>
             <input id="op-name" maxlength="32" placeholder="Gamertag" autocomplete="off" aria-label="Gamertag to make operator">
             <button type="submit">Make operator</button>
           </form>

@@ -37,6 +37,10 @@ type Options struct {
 	AdoptiumAPI    string
 	MojangVersions string
 	MojangProfiles string
+	// Where console support for Java servers comes from.
+	GeyserAPI  string
+	HangarAPI  string
+	XboxLookup string
 	// Notify, when set, is told about things the owner may want to hear
 	// about (crashes, join attempts, failed backups…). It must not block.
 	Notify func(notify.Event)
@@ -63,6 +67,7 @@ type Manager struct {
 	imports    importState
 	latest     versionCache
 	paper      paperCache
+	plugins    pluginCache
 	javaMu     sync.Mutex // one Java runtime install at a time
 }
 
@@ -106,6 +111,12 @@ type Meta struct {
 	// the next time a Java server starts (its accounts couldn't be looked
 	// up while it was stopped).
 	JavaPending []JavaPending `json:"javaPending,omitempty"`
+	// NoConsoles turns console players (Geyser and Floodgate) off on a
+	// Java server; they're on by default. Plugins holds the SHA-256 and
+	// version of each console plugin installed ("<sha256> 2.11.3 (build
+	// 9)"), by key.
+	NoConsoles bool              `json:"noConsoles,omitempty"`
+	Plugins    map[string]string `json:"plugins,omitempty"`
 	// LastNightly is the night (its date) overnight upkeep last acted on
 	// the server, so a panel restart doesn't do it twice.
 	LastNightly string `json:"lastNightly,omitempty"`
@@ -127,6 +138,7 @@ func New(opts Options) *Manager {
 	}{
 		{&opts.PaperAPI, DefaultPaperAPI}, {&opts.AdoptiumAPI, DefaultAdoptiumAPI},
 		{&opts.MojangVersions, DefaultMojangVersion}, {&opts.MojangProfiles, DefaultMojangProfile},
+		{&opts.GeyserAPI, DefaultGeyserAPI}, {&opts.HangarAPI, DefaultHangarAPI}, {&opts.XboxLookup, DefaultXboxLookup},
 	} {
 		if *d.v == "" {
 			*d.v = d.def
@@ -335,10 +347,14 @@ func (m *Manager) Joinable() []Joinable {
 	var out []Joinable
 	for _, s := range m.all() {
 		st := s.Status()
+		running := st.State == StateRunning
 		if st.Type == TypeJava {
-			continue // Bedrock consoles can't join Java servers (yet)
+			if !st.Consoles {
+				continue // Java players only
+			}
+			running = st.ConsolesLive
 		}
-		out = append(out, Joinable{Name: st.Name, Port: st.Port, Running: st.State == StateRunning})
+		out = append(out, Joinable{Name: st.Name, Port: st.Port, Running: running})
 	}
 	return out
 }

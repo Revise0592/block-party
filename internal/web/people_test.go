@@ -373,6 +373,7 @@ func TestOnlyTheOwnerDeletesServers(t *testing.T) {
 		{"GET", "/api/deleted-servers", "", 403},
 		{"PUT", "/api/nightly", `{"autoUpdate":true,"at":"04:00"}`, 403},
 		{"POST", "/api/servers/ava/hold-version", `{"hold":true}`, 200},
+		{"POST", "/api/servers/ava/consoles", `{"on":true}`, 409}, // a Bedrock server
 	} {
 		if w := call(h, c.method, c.path, c.body, ava); w.Code != c.want {
 			t.Errorf("%s %s: %d, want %d (%s)", c.method, c.path, w.Code, c.want, w.Body)

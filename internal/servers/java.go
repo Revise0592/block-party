@@ -364,14 +364,19 @@ func (s *Server) installJava(update bool) error {
 	defer cancel()
 	s.mu.Lock()
 	current, build := s.meta.Version, s.meta.Build
+	// Overnight, a held server only gets its console support updated.
+	pluginsOnly := update && s.autoUpdating && s.meta.HoldVersion
 	s.mu.Unlock()
+	_, statErr := os.Stat(filepath.Join(s.dir(), paperJar))
+	if pluginsOnly && statErr == nil {
+		return s.installConsoles(ctx, true)
+	}
 
 	s.say("Asking PaperMC for the current Paper server…")
 	r, err := s.m.latestPaper(ctx)
 	if err != nil {
 		return err
 	}
-	_, statErr := os.Stat(filepath.Join(s.dir(), paperJar))
 	if update && statErr == nil && !javaNewer(r, current, build) {
 		// Java may still be missing (a moved data folder): put it back.
 		s.mu.Lock()
@@ -388,7 +393,10 @@ func (s *Server) installJava(update bool) error {
 		s.mu.Unlock()
 		_ = s.saveMeta()
 		s.say("Already on the current version (" + r.label() + ").")
-		return nil
+		s.mu.Lock()
+		auto := s.autoUpdating // overnight, that was for console support
+		s.mu.Unlock()
+		return s.installConsoles(ctx, auto)
 	}
 	if update && current != "" && r.Version != current {
 		s.say("This moves the server from Minecraft " + current + " to " + r.Version + ". Worlds can't go back to an older version afterwards (the backup can).")
@@ -427,6 +435,33 @@ func (s *Server) installJava(update bool) error {
 	}
 	_ = os.Remove(s.incompleteMarker())
 	s.say("Paper " + r.label() + " is installed.")
+	return s.installConsoles(ctx, false)
+}
+
+// installConsoles installs or updates console support during an install or
+// update. If it can't, the server still works for Java players, so that's
+// said rather than failing the update, unless console support is all the
+// update was for (only, so it's reported as failed).
+func (s *Server) installConsoles(ctx context.Context, only bool) error {
+	if !s.ConsolesOn() {
+		_, err := s.ensureConsolePlugins(ctx) // removes them if they're there
+		return err
+	}
+	updated, err := s.ensureConsolePlugins(ctx)
+	if err != nil && only {
+		return err
+	}
+	if err != nil {
+		s.say(err.Error() + " Java players can still join; try Update now again later.")
+		return nil
+	}
+	if updated {
+		s.mu.Lock()
+		s.updatedConsoles = true
+		s.mu.Unlock()
+	} else {
+		s.say("Console support is up to date.")
+	}
 	return nil
 }
 
@@ -465,6 +500,10 @@ func (s *Server) applyJavaProperties(fresh bool) error {
 	}
 	p.set("server-port", strconv.Itoa(s.meta.Port))
 	p.set("query.port", strconv.Itoa(s.meta.Port))
+	if s.consolesOnLocked() {
+		// Query is UDP on the same port, which Geyser needs for consoles.
+		p.set("enable-query", "false")
+	}
 	if strings.Join(p.lines, "\n") == before {
 		return nil
 	}
@@ -489,8 +528,14 @@ func (s *Server) javaCommand() (string, []string, error) {
 		fmt.Sprintf("-Xms%dM", mem/2), fmt.Sprintf("-Xmx%dM", mem),
 		"-XX:+UseG1GC", "-XX:+ParallelRefProcEnabled", "-XX:MaxGCPauseMillis=200",
 		"-Dfile.encoding=UTF-8",
-		"-jar", paperJar, "--nogui", "--world-container", "worlds",
 	}
+	if s.consolesLive || fileExists(filepath.Join(s.dir(), "plugins", consolePlugins[0].File)) {
+		// Geyser takes console players on the server's own port (UDP), never
+		// its default (the console server list's port).
+		args = append(args, "-DgeyserUdpPort="+strconv.Itoa(s.meta.Port))
+	}
+	args = append(args,
+		"-jar", paperJar, "--nogui", "--world-container", "worlds")
 	return bin, args, nil
 }
 

@@ -21,6 +21,7 @@ import (
 // fakeJava stands in for "java -jar paper.jar": it prints what Paper prints
 // and answers the commands the panel sends.
 const fakeJava = `#!/bin/sh
+echo "[12:00:00 INFO]: args: $*"
 echo "[12:00:00 INFO]: Starting minecraft server version VERSION"
 echo "[12:00:01 INFO]: Done (1.234s)! For help, type \"help\""
 while read line; do
@@ -48,12 +49,28 @@ type fakeJavaWorld struct {
 	profiles bool // Mojang's profile service is reachable
 	srv      *httptest.Server
 	jreFetch int
+	// Console support: Geyser and Floodgate's version, ViaVersion's, and
+	// gamertags the Xbox lookup knows (gamertag -> Xbox ID).
+	geyser    string
+	geyserB   int
+	via       string
+	viaDown   bool
+	xboxDown  bool
+	xbox      map[string]string
+	pluginGet int
+	badJars   bool // plugin downloads come back damaged
+}
+
+// pluginJar is the fake jar of a console plugin build.
+func pluginJar(name, version string, build int) []byte {
+	return []byte(fmt.Sprintf("%s %s build %d", name, version, build))
 }
 
 func sha(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
 
 func newFakeJavaWorld(t *testing.T) *fakeJavaWorld {
-	f := &fakeJavaWorld{version: "1.21.4", build: 5, jars: map[string][]byte{}, profiles: true}
+	f := &fakeJavaWorld{version: "1.21.4", build: 5, jars: map[string][]byte{}, profiles: true,
+		geyser: "2.11.3", geyserB: 100, via: "5.5.1", xbox: map[string]string{"Dad Gamer": "2535400000000001", "Kid One": "2535400000000002", "Stranger": "2535400000000009"}}
 	// A JRE whose bin/java is the fake server.
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
@@ -105,6 +122,58 @@ func newFakeJavaWorld(t *testing.T) *fakeJavaWorld {
 				return
 			}
 			json.NewEncoder(w).Encode(map[string]string{"id": "0123456789abcdef0123456789abcdef", "name": name})
+		case strings.HasPrefix(p, "/geyser/"):
+			// /geyser/<project>/versions/latest/builds/latest, and
+			// /geyser/<project>/versions/<v>/builds/<b>/downloads/spigot
+			parts := strings.Split(strings.TrimPrefix(p, "/geyser/"), "/")
+			project := parts[0]
+			file := map[string]string{"geyser": "Geyser-Spigot.jar", "floodgate": "floodgate-spigot.jar"}[project]
+			if file == "" {
+				w.WriteHeader(404)
+				return
+			}
+			if strings.HasSuffix(p, "/versions/latest/builds/latest") {
+				json.NewEncoder(w).Encode(map[string]any{"version": f.geyser, "build": f.geyserB,
+					"downloads": map[string]any{"spigot": map[string]string{"name": file, "sha256": sha(pluginJar(project, f.geyser, f.geyserB))}}})
+				return
+			}
+			if len(parts) == 7 && parts[6] == "spigot" {
+				b := 0
+				fmt.Sscan(parts[4], &b)
+				f.pluginGet++
+				if f.badJars {
+					w.Write([]byte("damaged"))
+					return
+				}
+				w.Write(pluginJar(project, parts[2], b))
+				return
+			}
+			w.WriteHeader(404)
+		case p == "/hangar/ViaVersion/latestrelease":
+			if f.viaDown {
+				w.WriteHeader(503)
+				return
+			}
+			w.Write([]byte(f.via))
+		case strings.HasPrefix(p, "/hangar/ViaVersion/versions/"):
+			v := strings.TrimPrefix(p, "/hangar/ViaVersion/versions/")
+			json.NewEncoder(w).Encode(map[string]any{"downloads": map[string]any{"PAPER": map[string]any{
+				"fileInfo":    map[string]any{"name": "ViaVersion-" + v + ".jar", "sha256Hash": sha(pluginJar("viaversion", v, 0))},
+				"downloadUrl": f.srv.URL + "/viajar/" + v}}})
+		case strings.HasPrefix(p, "/viajar/"):
+			f.pluginGet++
+			w.Write(pluginJar("viaversion", strings.TrimPrefix(p, "/viajar/"), 0))
+		case strings.HasPrefix(p, "/xbox/"):
+			if f.xboxDown {
+				w.WriteHeader(503)
+				return
+			}
+			x, ok := f.xbox[strings.TrimPrefix(p, "/xbox/")]
+			if !ok {
+				w.Write([]byte(`{}`)) // what GeyserMC answers for an unknown gamertag
+				return
+			}
+			fmt.Fprintf(w, `{"xuid":%s}`, x)
 		default:
 			w.WriteHeader(404)
 		}
@@ -116,7 +185,8 @@ func newFakeJavaWorld(t *testing.T) *fakeJavaWorld {
 func newJavaManager(t *testing.T, f *fakeJavaWorld) *Manager {
 	t.Helper()
 	m := New(Options{DataDir: t.TempDir(), StopTimeout: time.Second,
-		PaperAPI: f.srv.URL + "/paper", AdoptiumAPI: f.srv.URL + "/adoptium", MojangVersions: f.srv.URL + "/manifest", MojangProfiles: f.srv.URL + "/profiles/"})
+		PaperAPI: f.srv.URL + "/paper", AdoptiumAPI: f.srv.URL + "/adoptium", MojangVersions: f.srv.URL + "/manifest", MojangProfiles: f.srv.URL + "/profiles/",
+		GeyserAPI: f.srv.URL + "/geyser", HangarAPI: f.srv.URL + "/hangar", XboxLookup: f.srv.URL + "/xbox/"})
 	if err := m.Load(); err != nil {
 		t.Fatal(err)
 	}
@@ -253,11 +323,13 @@ func TestJavaServer(t *testing.T) {
 	if _, err := s.Packs(); err == nil {
 		t.Error("add-ons on a Java server")
 	}
-	// Not offered to Bedrock consoles.
+	// Console support is on by default, so it's in the console list.
+	found = false
 	for _, j := range m.Joinable() {
-		if j.Name == "Java Fun" {
-			t.Error("Java server in the console list")
-		}
+		found = found || (j.Name == "Java Fun" && j.Running)
+	}
+	if !found {
+		t.Error("Java server with console support isn't in the console list")
 	}
 }
 
@@ -311,6 +383,9 @@ func TestJavaLinesCantBeFakedInChat(t *testing.T) {
 		"[12:00:05 INFO]: Disconnecting Griefer (/1.2.3.4:5): You are not white-listed on this server!":   "reject Griefer",
 		"[12:00:05 INFO]: Griefer (/1.2.3.4:5) lost connection: You are not white-listed on this server!": "reject Griefer",
 		"[12:00:05 INFO]: <Bob> Griefer (/x) You are not white-listed":                                    "",
+		"[12:00:05 INFO]: .Kid_One joined the game":                                                       "join .Kid_One",
+		"[12:00:05 INFO]: .Jürgen#12 left the game":                                                       "leave .Jürgen#12",
+		"[12:00:05 INFO]: Disconnecting .Stranger (/1.2.3.4:5): You are not white-listed on this server!": "reject .Stranger",
 	} {
 		got := ""
 		if m := reJavaJoin.FindStringSubmatch(line); m != nil {

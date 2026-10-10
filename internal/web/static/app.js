@@ -101,7 +101,7 @@ function greeting() {
 // whether it's far behind (a different 1.x, or ten or more versions back).
 function needsUpdate(s) {
   if (s.type === "java") {
-    if (!s.updateTo) return null;
+    if (!s.updateTo) return s.consolesUpdate ? { far: false, consoles: true } : null;
     const to = s.updateTo.split(" ")[0].split(".").map(Number), v = (s.version || "").split(".").map(Number);
     return { far: to[0] !== v[0] || to[1] !== v[1], to: s.updateTo };
   }
@@ -202,7 +202,8 @@ function renderDashboard(list, force) {
   $("update-banner").hidden = behind.length === 0;
   if (behind.length) {
     const javaTo = behind.find((s) => s.type === "java");
-    const headline = behind.some((s) => s.type !== "java") ? `Bedrock ${latestVersion} is out. ` : `Paper ${javaTo.updateTo.split(" ")[0]} is out. `;
+    const headline = behind.some((s) => s.type !== "java") ? `Bedrock ${latestVersion} is out. `
+      : javaTo.updateTo ? `Paper ${javaTo.updateTo.split(" ")[0]} is out. ` : "New console support for Java servers is out. ";
     $("update-banner-text").replaceChildren(el("b", {}, headline),
       `${behind.length} server${behind.length === 1 ? " can" : "s can"} update. Each one is backed up first and started again if it was running.`);
     $("update-all").textContent = behind.length === 1 ? "Update it" : `Update all ${behind.length}`;
@@ -294,14 +295,15 @@ let ovPlayersKey = ""; // what the Overview player list last showed
 let dashKey = "";      // what the dashboard last showed
 
 function renderDetailHead(s) {
-  const key = JSON.stringify([s.id, s.name, s.state, s.version, s.build, s.updateTo, s.port, s.message, latestVersion, s.players.length, prefs.style, s.access]);
+  const key = JSON.stringify([s.id, s.name, s.state, s.version, s.build, s.updateTo, s.consoles, s.consolesUpdate, s.consolesLive, s.port, s.message, latestVersion, s.players.length, prefs.style, s.access]);
   if (key === detailKey) return; // unchanged: keep keyboard focus where it is
   detailKey = key;
   $("detail-name").textContent = s.name;
   const upd = needsUpdate(s);
   $("detail-facts").replaceChildren(stateEl(s),
     s.type === "java"
-      ? el("span", {}, "Java ", el("span", { class: "mono" }, s.version || "…"), s.build ? el("span", { class: "muted" }, ` · Paper build ${s.build}`) : null)
+      ? el("span", {}, "Java ", el("span", { class: "mono" }, s.version || "…"), s.build ? el("span", { class: "muted" }, ` · Paper build ${s.build}`) : null,
+        s.consoles ? el("span", { class: "muted", title: s.consolesLive ? "Consoles, phones and tablets can join now" : "Consoles can join while it's running with console support" }, " · consoles too") : null)
       : el("span", {}, "Bedrock ", el("span", { class: "mono" }, s.version || "…")),
     el("span", {}, "Port ", el("span", { class: "mono" }, String(s.port))));
   $("detail-message").textContent = s.message || "";
@@ -309,7 +311,7 @@ function renderDetailHead(s) {
   const busy = busyStates.includes(s.state);
   const copying = s.state === "importing";
   const updBtn = el("button", { class: upd ? "info" : "", onclick: confirmUpdate(s), disabled: copying || s.state === "installing" || s.state === "updating" || s.state === "restoring" },
-    "Update", upd ? el("span", { class: "long" }, ` to ${upd.to ? upd.to.split(" ")[0] : latestVersion}`) : null);
+    "Update", upd ? el("span", { class: "long" }, upd.consoles ? " console support" : ` to ${upd.to ? upd.to.split(" ")[0] : latestVersion}`) : null);
   $("detail-actions").replaceChildren(...[startStopButton(s),
     el("button", { onclick: action(s.id, "restart"), disabled: !isLive(s) || busy }, "Restart"),
     access(s) >= CARE ? updBtn : null].filter(Boolean));
@@ -341,7 +343,7 @@ async function refresh() {
         location.hash = "#/"; // the owner changed what this account may do
       } else if (s) {
         renderDetailHead(s);
-        if (tab === "settings") { renderHold(); renderMemory(); }
+        if (tab === "settings") { renderHold(); renderMemory(); renderConsoles(); }
         if (tab === "overview") renderOverviewStatus(s);
       } else {
         resetSettings(); // it's gone (a failed import, say): nothing to save
@@ -657,12 +659,41 @@ function ago(iso) {
   return `${Math.round(s / 3600)} h ago`;
 }
 
+// playerLabel shows a console player on a Java server (".Gamer_Tag") by
+// their gamertag.
+function playerLabel(name, console) {
+  if (!console && !(name || "").startsWith(".")) return name;
+  return el("span", {}, name.slice(1).replace(/_/g, " "), " ", el("span", { class: "badge", title: "Plays on a console, phone or tablet" }, "console"));
+}
+
+// playerKindChanged sets an add form's placeholder for who's being added.
+function playerKindChanged(kind, input, what) {
+  const word = $(kind).value === "console" ? "Gamertag" : "Java username";
+  $(input).placeholder = word;
+  $(input).setAttribute("aria-label", `${word} to ${what}`);
+}
+$("allow-kind").addEventListener("change", () => playerKindChanged("allow-kind", "allow-name", "allow"));
+$("op-kind").addEventListener("change", () => playerKindChanged("op-kind", "op-name", "make operator"));
+
+// typedName is what an add form sends: console players on a Java server
+// are known by "." and their gamertag.
+function typedName(kind, input) {
+  const name = $(input).value.trim();
+  if (!name || $(kind).hidden || $(kind).value !== "console") return name;
+  return "." + name.replace(/^\./, "");
+}
+
 function renderPlayers(v) {
+  for (const k of ["allow-kind", "op-kind"]) {
+    $(k).hidden = !(v.java && v.consoles);
+    if ($(k).hidden) $(k).value = "java";
+  }
   const nameWord = v.java ? "Java username" : "Gamertag";
   $("allow-name").placeholder = nameWord;
   $("op-name").placeholder = nameWord;
   $("allow-name").setAttribute("aria-label", nameWord + " to allow");
   $("op-name").setAttribute("aria-label", nameWord + " to make operator");
+  if (v.java) { playerKindChanged("allow-kind", "allow-name", "allow"); playerKindChanged("op-kind", "op-name", "make operator"); }
   for (const k of ["online", "allowlist", "operators", "attempts"]) v[k] = v[k] || [];
   const ops = new Set(v.operators.filter((o) => !o.pending).map((o) => o.name.toLowerCase()));
   const listed = new Set(v.allowlist.map((a) => a.name.toLowerCase()));
@@ -670,13 +701,13 @@ function renderPlayers(v) {
 
   // Tried to join
   $("attempts-box").hidden = v.attempts.length === 0;
-  $("attempts").replaceChildren(...v.attempts.map((a) => row(a.name,
+  $("attempts").replaceChildren(...v.attempts.map((a) => row(v.java ? playerLabel(a.name) : a.name,
     `${ago(a.at)}${a.verified ? "" : " · Xbox sign-in not checked (PlayStation or Switch)"}`,
     btn(word("allow"), () => playersCall(() => post(sid() + "/allowlist", { name: a.name })), "primary"),
     btn("Dismiss", () => playersCall(() => del(sid() + "/attempts/" + enc(a.name)))))));
 
   // Online
-  $("online").replaceChildren(...(v.online.length ? v.online.map((p) => row(p.name,
+  $("online").replaceChildren(...(v.online.length ? v.online.map((p) => row(v.java ? playerLabel(p.name) : p.name,
     `playing since ${new Date(p.since).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`,
     ops.has(p.name.toLowerCase()) ? el("span", { class: "badge" }, "operator")
       : btn("Make operator", () => playersCall(() => post(sid() + "/operators", { name: p.name }))),
@@ -697,7 +728,7 @@ function renderPlayers(v) {
   $("allow-help").textContent = v.allowlistEnabled
     ? "Only these players can join."
     : "Off: anyone who can reach the server can join. The list is kept for when you turn it back on.";
-  $("allowlist").replaceChildren(...(v.allowlist.length ? v.allowlist.map((a) => row(a.name,
+  $("allowlist").replaceChildren(...(v.allowlist.length ? v.allowlist.map((a) => row(v.java ? playerLabel(a.name, a.console) : a.name,
     a.pending ? "added when the server next starts" : (v.java || a.xuid ? "" : "hasn't joined yet"),
     ops.has(a.name.toLowerCase()) ? el("span", { class: "badge" }, "operator") : null,
     btn("Remove", () => {
@@ -706,21 +737,21 @@ function renderPlayers(v) {
   )) : [emptyRow("Nobody yet.")]));
 
   // Operators
-  $("operators").replaceChildren(...(v.operators.length ? v.operators.map((o) => row(o.name,
-    o.pending ? (v.java ? "made an operator when the server next starts" : "becomes operator on their first join") : (listed.has(o.name.toLowerCase()) || !v.allowlistEnabled ? "" : "not on the allowlist"),
+  $("operators").replaceChildren(...(v.operators.length ? v.operators.map((o) => row(v.java ? playerLabel(o.name, o.console) : o.name,
+    o.pending ? (v.java && !o.console ? "made an operator when the server next starts" : "becomes operator when they next join") : (listed.has(o.name.toLowerCase()) || !v.allowlistEnabled ? "" : "not on the allowlist"),
     btn("Remove", () => playersCall(() => del(sid() + "/operators/" + enc(o.pending ? o.name : (o.xuid || o.name))))),
   )) : [emptyRow("No operators.")]));
 }
 
 $("allow-form").addEventListener("submit", (ev) => {
   ev.preventDefault();
-  const name = $("allow-name").value.trim();
+  const name = typedName("allow-kind", "allow-name");
   if (!name) return;
   playersCall(async () => { const v = await post(sid() + "/allowlist", { name }); $("allow-name").value = ""; return v; });
 });
 $("op-form").addEventListener("submit", (ev) => {
   ev.preventDefault();
-  const name = $("op-name").value.trim();
+  const name = typedName("op-kind", "op-name");
   if (!name) return;
   playersCall(async () => { const v = await post(sid() + "/operators", { name }); $("op-name").value = ""; return v; });
 });
@@ -786,6 +817,7 @@ async function loadSettings() {
     $("rename-name").value = settingsView.name;
     renderHold();
     renderMemory();
+    renderConsoles();
     renderSettings();
     showSettingsError(null);
   } catch (err) { showSettingsError(err); }
@@ -1421,9 +1453,9 @@ function showEdition() {
   $("add-java-label").hidden = !java;
   $("add-memory-label").hidden = !java;
   $("edition-help").textContent = java
-    ? "For Minecraft: Java Edition on a PC or Mac. Runs Paper, which is faster than Mojang's own server and takes plugins. Consoles can join Java servers in a later update."
+    ? "For Minecraft: Java Edition on a PC or Mac. Runs Paper, which is faster than Mojang's own server and takes plugins. Consoles, phones and tablets can join too (through Geyser, installed for you)."
     : "For consoles, phones, tablets and Windows: the Minecraft most kids play.";
-  $("add-source").textContent = java ? "Paper is downloaded from papermc.io, and Java from adoptium.net." : "The server is downloaded from Mojang.";
+  $("add-source").textContent = java ? "Paper is downloaded from papermc.io, Java from adoptium.net, and console support from geysermc.org and hangar.papermc.io." : "The server is downloaded from Mojang.";
   if (java && !$("add-java").value) $("add-java").value = me.owner ? settings.ownerJavaName || "" : "";
 }
 for (const r of document.querySelectorAll("input[name=edition]")) r.addEventListener("change", showEdition);
@@ -1438,6 +1470,35 @@ function renderMemory() {
   if (![...sel.options].some((o) => o.value === v)) sel.append(el("option", { value: v }, `${Math.round(Number(v) / 102.4) / 10} GB`));
   if (document.activeElement !== sel) sel.value = v;
 }
+function renderConsoles() {
+  const s = serverList.find((x) => x.id === selected);
+  const show = !!s && s.type === "java" && access(s) >= CARE;
+  $("consoles-card").hidden = !show;
+  if (!show) return;
+  const box = $("consoles-on");
+  if (document.activeElement !== box) box.checked = !!s.consoles;
+  $("consoles-on-label").textContent = s.consoles ? "On" : "Off";
+  $("consoles-help").textContent = !s.consoles
+    ? "Off: only Minecraft Java Edition (PC and Mac) can join."
+    : s.consolesLive
+      ? "Xbox, PlayStation, Switch, phones and tablets can join this server now, on the same port, and show up in the console server list. Add them to the allowlist by gamertag (choose \"Console, phone or tablet\" on the Players tab)."
+      : "Xbox, PlayStation, Switch, phones and tablets can join while the server runs with console support (Geyser and Floodgate, installed and kept up to date by the panel). If it was just turned on, restart the server.";
+}
+$("consoles-on").addEventListener("change", async (ev) => {
+  const box = ev.currentTarget;
+  const on = box.checked;
+  if (!on && !confirm("Turn console players off? Xbox, PlayStation, Switch, phone and tablet players won't be able to join this server.")) {
+    box.checked = true;
+    return;
+  }
+  try {
+    await post(`${sid()}/consoles`, { on });
+    showSettingsError(null);
+    await refresh();
+  } catch (err) { showSettingsError(err); box.checked = !on; }
+  renderConsoles();
+});
+
 $("memory-select").addEventListener("change", async (ev) => {
   const sel = ev.currentTarget;
   try {
@@ -1754,15 +1815,17 @@ function importRow(c) {
 
 // inviteText tells a friend how to join a server from outside the house.
 function inviteText(v, name) {
-  if (v.java) {
-    return [`Come play on "${name}" with me in Minecraft: Java Edition!`, "",
-      "Open Minecraft (Java Edition) on your PC or Mac, choose Multiplayer, then Add Server, and type",
-      `  Server Address: ${v.address}:${v.port}`, "",
+  const javaLines = ["Open Minecraft (Java Edition) on your PC or Mac, choose Multiplayer, then Add Server, and type",
+    `  Server Address: ${v.address}:${v.port}`, ""];
+  if (v.java && !v.javaConsoles) {
+    return [`Come play on "${name}" with me in Minecraft: Java Edition!`, "", ...javaLines,
       "Send me your Minecraft Java username first so I can put you on the allowlist."].join("\n");
   }
-  const lines = [`Come play on "${name}" with me in Minecraft!`, "",
-    "On a PC, phone or tablet: open Minecraft, go to Play, then Servers, then Add Server, and type",
-    `  Server address: ${v.address}`, `  Port: ${v.port}`, ""];
+  const lines = [`Come play on "${name}" with me in Minecraft!`, ""];
+  if (v.java) lines.push("On a PC or Mac with Minecraft: Java Edition:", ...javaLines.map((l) => l && "  " + l));
+  lines.push(v.java ? "On a phone, tablet or Windows (Minecraft Bedrock): go to Play, then Servers, then Add Server, and type"
+    : "On a PC, phone or tablet: open Minecraft, go to Play, then Servers, then Add Server, and type",
+    `  Server address: ${v.address}`, `  Port: ${v.port}`, "");
   lines.push("On an Xbox, PlayStation or Switch (they can't type an address):");
   if (v.consoles && v.consoleDNS) {
     lines.push(`  1. In the console's network settings, set the DNS by hand: primary ${v.consoleDNS}, secondary 1.1.1.1.`,
@@ -1775,7 +1838,8 @@ function inviteText(v, name) {
     "     (That's BedrockConnect, a free public server list.)",
     "  2. Restart the console, open Minecraft, go to Servers and join any featured server.",
     `  3. Choose "Connect to a Server" and type ${v.address} and port ${v.port}.`, "",
-    "Send me your gamertag first so I can put you on the allowlist.");
+    v.java ? "Send me your gamertag (or Java username) first so I can put you on the allowlist."
+      : "Send me your gamertag first so I can put you on the allowlist.");
   return lines.join("\n");
 }
 
@@ -1803,9 +1867,10 @@ function renderOverviewOutside(v, id) {
   if (v.problem) notes.push(`It can't be reached while ${v.problem}. Turn it back on (Players or Settings tab).`);
   if (v.open && v.shared) notes.push("Your internet provider (or a second router) shares this home's address, so friends can't reach it. See Friends outside the house.");
   if (v.open && !v.problem && !v.opened && me.owner) {
+    const proto = v.java ? (v.javaConsoles ? "TCP and UDP" : "TCP") : "UDP";
     notes.push(v.upnp && v.portError
-      ? `The router didn't open port ${v.port}: ${v.portError}. Forward UDP ${v.port} to this panel by hand.`
-      : (v.upnp ? "" : `Forward UDP port ${v.port} to this panel in your router (see Friends outside the house).`));
+      ? `The router didn't open port ${v.port}: ${v.portError}. Forward ${proto} ${v.port} to this panel by hand.`
+      : (v.upnp ? "" : `Forward ${proto} port ${v.port} to this panel in your router (see Friends outside the house).`));
   }
   const note = notes.filter(Boolean).join(" ");
   $("ov-outside-problem").textContent = note;

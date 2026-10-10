@@ -99,20 +99,20 @@ func (m *Manager) javaLookup(ctx context.Context, name string) (string, string, 
 func (s *Server) javaPlayers() (PlayersView, error) {
 	s.filesMu.Lock()
 	defer s.filesMu.Unlock()
-	v := PlayersView{Java: true, AllowlistEnabled: s.allowlistEnabled(), Online: []Player{}, Allowlist: []ListedName{}, Operators: []ListedName{}, Attempts: []JoinAttempt{}}
+	v := PlayersView{Java: true, Consoles: s.ConsolesOn(), AllowlistEnabled: s.allowlistEnabled(), Online: []Player{}, Allowlist: []ListedName{}, Operators: []ListedName{}, Attempts: []JoinAttempt{}}
 	allow, err := readJSONList[javaListEntry](s.whitelistPath())
 	if err != nil {
 		return v, err
 	}
 	for _, a := range allow {
-		v.Allowlist = append(v.Allowlist, ListedName{Name: a.Name})
+		v.Allowlist = append(v.Allowlist, ListedName{Name: a.Name, Console: isConsoleName(a.Name)})
 	}
 	ops, err := readJSONList[javaOpEntry](s.opsPath())
 	if err != nil {
 		return v, err
 	}
 	for _, o := range ops {
-		v.Operators = append(v.Operators, ListedName{Name: o.Name})
+		v.Operators = append(v.Operators, ListedName{Name: o.Name, Console: isConsoleName(o.Name)})
 	}
 	st := s.Status()
 	v.Online = st.Players
@@ -121,9 +121,9 @@ func (s *Server) javaPlayers() (PlayersView, error) {
 	for _, p := range s.meta.JavaPending {
 		switch p.Action {
 		case "allow":
-			v.Allowlist = append(v.Allowlist, ListedName{Name: p.Name, Pending: true})
+			v.Allowlist = append(v.Allowlist, ListedName{Name: p.Name, Pending: true, Console: isConsoleName(p.Name)})
 		case "op":
-			v.Operators = append(v.Operators, ListedName{Name: p.Name, Pending: true})
+			v.Operators = append(v.Operators, ListedName{Name: p.Name, Pending: true, Console: isConsoleName(p.Name)})
 		}
 	}
 	v.Attempts = append(v.Attempts, s.attempts...)
@@ -150,6 +150,9 @@ func (s *Server) javaCommandIfRunning(line string) bool {
 // server runs, otherwise in the files (or later, if the account can't be
 // looked up now).
 func (s *Server) javaChange(name, action string) (pending bool, err error) {
+	if isConsoleName(name) {
+		return s.consoleChange(name, action)
+	}
 	name, err = cleanJavaName(name)
 	if err != nil {
 		return false, err
@@ -262,12 +265,26 @@ func (s *Server) applyJavaPendingLocked() {
 	if len(s.meta.JavaPending) == 0 {
 		return
 	}
-	for _, p := range s.meta.JavaPending {
+	// Console removals first: their reload reads the edited allowlist
+	// before any other change makes the server save its own copy.
+	pending := append([]JavaPending(nil), s.meta.JavaPending...)
+	sort.SliceStable(pending, func(i, j int) bool {
+		first := func(p JavaPending) bool { return isConsoleName(p.Name) && p.Action == "unallow" }
+		return first(pending[i]) && !first(pending[j])
+	})
+	var kept []JavaPending
+	for _, p := range pending {
+		if isConsoleName(p.Name) {
+			if s.applyConsolePendingLocked(p) {
+				kept = append(kept, p)
+			}
+			continue
+		}
 		cmd := map[string]string{"allow": "whitelist add ", "unallow": "whitelist remove ", "op": "op ", "deop": "deop "}[p.Action] + p.Name
 		s.addLineLocked("> " + cmd)
 		s.sendLocked(cmd)
 	}
-	s.meta.JavaPending = nil
+	s.meta.JavaPending = kept
 	s.saveMetaLater()
 }
 
@@ -277,12 +294,15 @@ var (
 	// The server's own lines start with "[12:00:00 INFO]: " (or
 	// "[12:00:00] [Server thread/INFO]: "); matching from there means chat
 	// can't pretend to be one ("<Bob> Alice left the game").
-	javaPrefix     = `^(?:\[[^\]]*\]\s*)+:\s`
-	reJavaDone     = regexp.MustCompile(javaPrefix + `Done \([0-9.,]+s\)! For help`)
-	reJavaVersion  = regexp.MustCompile(javaPrefix + `Starting minecraft server version ([0-9]+(?:\.[0-9]+){1,3})`)
-	reJavaJoin     = regexp.MustCompile(javaPrefix + `([A-Za-z0-9_.]{2,17})(?: \(formerly known as [A-Za-z0-9_.]+\))? joined the game$`)
-	reJavaLeave    = regexp.MustCompile(javaPrefix + `([A-Za-z0-9_.]{2,17}) left the game$`)
-	reJavaNotAllow = regexp.MustCompile(javaPrefix + `(?:Disconnecting )?(?:com\.mojang\.authlib\.GameProfile.*?name=)?([A-Za-z0-9_.]{2,17})(?: \(/|,| ).*(?:not white-?listed|not on the white-?list)`)
+	javaPrefix    = `^(?:\[[^\]]*\]\s*)+:\s`
+	reJavaDone    = regexp.MustCompile(javaPrefix + `Done \([0-9.,]+s\)! For help`)
+	reJavaVersion = regexp.MustCompile(javaPrefix + `Starting minecraft server version ([0-9]+(?:\.[0-9]+){1,3})`)
+	// Names: Java usernames, and console players' ".Gamer_Tag" (gamertags
+	// can have letters of any language, and #).
+	javaPlayerName = `([\p{L}\p{N}_.#]{2,17})`
+	reJavaJoin     = regexp.MustCompile(javaPrefix + javaPlayerName + `(?: \(formerly known as [\p{L}\p{N}_.#]+\))? joined the game$`)
+	reJavaLeave    = regexp.MustCompile(javaPrefix + javaPlayerName + ` left the game$`)
+	reJavaNotAllow = regexp.MustCompile(javaPrefix + `(?:Disconnecting )?(?:com\.mojang\.authlib\.GameProfile.*?name=)?` + javaPlayerName + `(?: \(/|,| ).*(?:not white-?listed|not on the white-?list)`)
 	reJavaSaved    = regexp.MustCompile(javaPrefix + `Saved the game$`)
 	reJavaServer   = regexp.MustCompile(javaPrefix)
 	javaSaveLines  = []string{"Automatic saving is now disabled", "Saving the game (this may take a moment!)", "Saved the game", "Automatic saving is now enabled", "Saving is already turned"}
@@ -302,6 +322,9 @@ func (s *Server) onJavaLineLocked(line string) {
 		name := reJavaJoin.FindStringSubmatch(line)[1]
 		s.players[name] = Player{Name: name, Since: time.Now()}
 		s.playedSinceBackup = true
+		if isConsoleName(name) {
+			s.onConsoleJoinLocked(name)
+		}
 		s.notifyLocked(notify.PlayerJoined, name+" is playing on "+s.meta.Name, name+" joined "+s.meta.Name+".",
 			"play/"+s.meta.ID+"/"+strings.ToLower(name))
 		kept := s.attempts[:0]

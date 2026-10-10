@@ -190,6 +190,22 @@ func TestManagerOpensWhatsOpen(t *testing.T) {
 	if !info.Enabled || info.Host != "203.0.113.5" || !info.Open(19144) || info.Open(19134) || info.Consoles {
 		t.Errorf("info: %+v", info)
 	}
+	// Java servers: TCP, and UDP too when consoles can join (Geyser).
+	mu.Lock()
+	list = append(list, Server{ID: "pc", Name: "PC", Port: 19146, Open: true, Java: true},
+		Server{ID: "both", Name: "Both", Port: 19148, Open: true, Java: true, JavaConsoles: true})
+	mu.Unlock()
+	refresh()
+	if !f.has("TCP/19146") || f.has("UDP/19146") || !f.has("TCP/19148") || !f.has("UDP/19148") {
+		t.Errorf("java forwards: %v", f.forwards)
+	}
+	mu.Lock()
+	list = list[:3]
+	mu.Unlock()
+	refresh()
+	if f.has("TCP/19146") || f.has("TCP/19148") || f.has("UDP/19148") {
+		t.Errorf("java forwards not closed: %v", f.forwards)
+	}
 	if st.PublicIP != "203.0.113.5" || st.Shared || st.Router != "Test Router" || st.AddressWarning != "" {
 		t.Errorf("status: %+v", st)
 	}

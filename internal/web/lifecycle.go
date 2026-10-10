@@ -21,6 +21,7 @@ func (s *Server) lifecycleRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/nightly", ownerOnly(s.putNightly))
 	mux.HandleFunc("POST /api/servers/{id}/hold-version", s.withServer(levelCare, s.holdVersion))
 	mux.HandleFunc("POST /api/servers/{id}/memory", s.withServer(levelCare, s.setMemory))
+	mux.HandleFunc("POST /api/servers/{id}/consoles", s.withServer(levelCare, s.setConsoles))
 }
 
 func (s *Server) deleteServer(w http.ResponseWriter, r *http.Request) {
@@ -125,5 +126,25 @@ func (s *Server) setMemory(w http.ResponseWriter, r *http.Request, srv *servers.
 		return
 	}
 	s.note(r, srv, "set the server's memory to "+strconv.Itoa(req.MemoryMB)+" MB")
+	writeJSON(w, http.StatusOK, srv.Status())
+}
+
+// setConsoles turns console players on or off for a Java server.
+func (s *Server) setConsoles(w http.ResponseWriter, r *http.Request, srv *servers.Server) {
+	var req struct {
+		On bool `json:"on"`
+	}
+	if !readBody(w, r, &req) {
+		return
+	}
+	if err := srv.SetConsoles(req.On); err != nil {
+		writeError(w, http.StatusConflict, err)
+		return
+	}
+	if req.On {
+		s.note(r, srv, "let console players join the server")
+	} else {
+		s.note(r, srv, "turned console players off on the server")
+	}
 	writeJSON(w, http.StatusOK, srv.Status())
 }

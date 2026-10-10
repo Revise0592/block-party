@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/ScottSchneck/blockheads-control-panel/internal/outside"
@@ -30,7 +31,7 @@ func OutsideServers(mgr *servers.Manager) func() []outside.Server {
 			if !ok {
 				continue
 			}
-			s := outside.Server{ID: st.ID, Name: st.Name, Port: st.Port, Open: st.Outside, Java: st.Type == servers.TypeJava}
+			s := outside.Server{ID: st.ID, Name: st.Name, Port: st.Port, Open: st.Outside, Java: st.Type == servers.TypeJava, JavaConsoles: st.Consoles}
 			if st.Outside {
 				s.Problem = srv.OutsideProblem()
 			}
@@ -93,6 +94,8 @@ type serverOutsideView struct {
 	Shared     bool   `json:"shared"`
 	Owner      string `json:"owner"`
 	Java       bool   `json:"java"`
+	// JavaConsoles: a Java server consoles can join too (same port, UDP).
+	JavaConsoles bool `json:"javaConsoles,omitempty"`
 }
 
 func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsideView {
@@ -102,10 +105,8 @@ func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsi
 		Consoles: st.Settings.Consoles, UPnP: st.Settings.UPnP, Shared: st.Shared, Owner: s.auth.Username(),
 		Java: ss.Type == servers.TypeJava,
 	}
-	proto := "UDP"
-	if v.Java {
-		proto = "TCP"
-	}
+	v.JavaConsoles = v.Java && ss.Consoles
+	protos := outside.Server{Java: v.Java, JavaConsoles: v.JavaConsoles}.Protocols()
 	// The address consoles outside use as their DNS: where the address
 	// friends use leads (it's never a home address; see outside).
 	v.ConsoleDNS = st.PublicIP
@@ -120,11 +121,20 @@ func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsi
 			v.Reached = x.Reached && v.Problem == ""
 		}
 	}
+	// Opened only when every protocol it needs is.
+	opened := 0
 	for _, p := range st.Ports {
-		if p.Port.Port == ss.Port && p.Proto == proto {
-			v.Opened, v.PortError = p.Opened, p.Error
+		if p.Port.Port != ss.Port || !slices.Contains(protos, p.Proto) {
+			continue
+		}
+		if p.Opened {
+			opened++
+		}
+		if v.PortError == "" {
+			v.PortError = p.Error
 		}
 	}
+	v.Opened = opened == len(protos)
 	return v
 }
 

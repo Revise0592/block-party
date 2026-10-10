@@ -85,6 +85,9 @@ func main() {
 		AdoptiumAPI:    os.Getenv("ADOPTIUM_API"),
 		MojangVersions: os.Getenv("MOJANG_VERSIONS"),
 		MojangProfiles: os.Getenv("MOJANG_PROFILES"),
+		GeyserAPI:      os.Getenv("GEYSER_API"),
+		HangarAPI:      os.Getenv("HANGAR_API"),
+		XboxLookup:     os.Getenv("XBOX_LOOKUP"),
 	})
 	if err := mgr.Load(); err != nil {
 		slog.Error("could not read the servers folder", "error", err)
