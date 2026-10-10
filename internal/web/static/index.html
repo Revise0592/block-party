@@ -522,6 +522,7 @@
         <a id="tab-players" href="#" data-tab="players">Players</a>
         <a id="tab-settings" href="#" data-tab="settings">Settings</a>
         <a id="tab-addons" href="#" data-tab="addons">Add-ons</a>
+        <a id="tab-plugins" href="#" data-tab="plugins" hidden>Plugins</a>
         <a id="tab-backups" href="#" data-tab="backups">Backups</a>
         <a id="tab-console" href="#" data-tab="console">Console</a>
       </nav>
@@ -736,6 +737,35 @@
             <div class="upload-progress" hidden><progress max="100" value="0"></progress><span class="small muted"></span></div>
           </div>
         </section>
+      </div>
+
+      <div id="pane-plugins" hidden>
+        <p id="plugins-error" class="error" hidden></p>
+        <div id="plugins-restart" class="card notice" hidden>
+          <p>Restart the server to use the plugin changes. Players are disconnected for a moment.</p>
+          <div class="row">
+            <button type="button" id="plugins-restart-now" class="primary">Restart now</button>
+            <button type="button" id="plugins-restart-later">Later</button>
+          </div>
+        </div>
+
+        <section class="card">
+          <h3>Plugins</h3>
+          <p class="muted small">Plugins add things to a Java server: land claims, homes and teleports, maps, mini-games. Changes apply when the server next starts. Each plugin keeps its settings in its own folder in plugins/.</p>
+          <ul id="plugins-list" class="people"></ul>
+        </section>
+
+        <section class="card" id="plugins-find" hidden>
+          <h3>Find plugins</h3>
+          <p class="muted small">From Hangar (PaperMC's plugin site) and Modrinth, made for Minecraft <span id="plugins-mc" class="mono"></span>. The panel installs the newest release for that version, and any plugins it needs, and checks each download. Plugins run their own code on your server, so stick to well-known ones.</p>
+          <form id="plugin-search-form" class="row">
+            <input id="plugin-q" maxlength="100" placeholder="Search, e.g. land claims, homes, maps" autocomplete="off" aria-label="Search plugins">
+            <button type="submit" class="primary">Search</button>
+          </form>
+          <p id="plugin-notes" class="muted small" hidden></p>
+          <ul id="plugin-results" class="people results"></ul>
+        </section>
+        <p id="plugins-ask" class="muted small" hidden>Only the owner adds, updates and removes plugins, because they run their own code on the computer. You can turn installed ones off and on.</p>
       </div>
 
       <div id="pane-backups" hidden>

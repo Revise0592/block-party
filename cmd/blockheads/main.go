@@ -88,6 +88,7 @@ func main() {
 		GeyserAPI:      os.Getenv("GEYSER_API"),
 		HangarAPI:      os.Getenv("HANGAR_API"),
 		XboxLookup:     os.Getenv("XBOX_LOOKUP"),
+		ModrinthAPI:    os.Getenv("MODRINTH_API"),
 	})
 	if err := mgr.Load(); err != nil {
 		slog.Error("could not read the servers folder", "error", err)

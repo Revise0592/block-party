@@ -317,6 +317,7 @@ function renderDetailHead(s) {
     access(s) >= CARE ? updBtn : null].filter(Boolean));
   for (const t of ["players", "settings", "addons", "backups"]) $("tab-" + t).hidden = copying;
   $("tab-addons").hidden = copying || s.type === "java"; // Bedrock add-ons
+  $("tab-plugins").hidden = copying || s.type !== "java" || access(s) < CARE; // Java plugins
   $("ov-backups-link").textContent = access(s) >= CARE ? "Restore or download" : "See backups";
 }
 
@@ -403,7 +404,7 @@ function route() {
   }
   if (next === "server") {
     const id = parts[1];
-    const t = ["overview", "players", "settings", "addons", "backups", "console"].includes(parts[2]) ? parts[2] : "overview";
+    const t = ["overview", "players", "settings", "addons", "plugins", "backups", "console"].includes(parts[2]) ? parts[2] : "overview";
     if (!id) { location.hash = "#/"; return; }
     const known = serverList.find((x) => x.id === id);
     if (known && access(known) < RUN) { location.hash = "#/"; return; }
@@ -414,6 +415,7 @@ function route() {
       resetSettings();
       resetBackups();
       resetAddons();
+      resetPlugins();
       clearServerPanes();
       selected = id;
       $("detail-name").textContent = "";
@@ -423,7 +425,9 @@ function route() {
       if (s) renderDetailHead(s);
     }
     const s = serverList.find((x) => x.id === id);
-    const tabOK = !(s && s.state === "importing" && ["players", "settings", "addons", "backups"].includes(t));
+    let tabOK = !(s && s.state === "importing" && ["players", "settings", "addons", "plugins", "backups"].includes(t));
+    if (s && t === "plugins" && (s.type !== "java" || access(s) < CARE)) tabOK = false;
+    if (s && t === "addons" && s.type === "java") tabOK = false;
     acceptedHash = location.hash;
     setView("server");
     showTab(tabOK ? t : "overview");
@@ -472,7 +476,7 @@ function setView(v) {
 
 function showTab(which) {
   tab = which;
-  for (const t of ["overview", "players", "settings", "addons", "backups", "console"]) {
+  for (const t of ["overview", "players", "settings", "addons", "plugins", "backups", "console"]) {
     const a = $("tab-" + t);
     a.href = serverHref(selected, t);
     if (t === which) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
@@ -484,6 +488,7 @@ function showTab(which) {
   else if (which === "settings") { if (!settingsView || !settingsDirty()) loadSettings(); }
   else if (which === "backups") loadBackups();
   else if (which === "addons") loadAddons();
+  else if (which === "plugins") loadPlugins();
   else if (which === "players") loadPlayers();
   else loadOverview();
 }
@@ -1697,6 +1702,148 @@ $("addons-restart-now").addEventListener("click", async () => {
   refresh();
 });
 $("addons-restart-later").addEventListener("click", () => { $("addons-restart").hidden = true; });
+// ---- plugins tab (Java) ----
+
+let pluginsFor = null; // server ID the plugins tab shows
+let pluginsView = null; // last loaded, to mark search results already installed
+let pluginUpdates = {}; // file -> newer version
+let pluginResults = null; // last search, kept while the list reloads
+
+function showPluginsError(err) {
+  $("plugins-error").textContent = err ? err.message : "";
+  $("plugins-error").hidden = !err;
+  if (err) $("plugins-error").scrollIntoView({ block: "nearest" });
+}
+
+function resetPlugins() {
+  pluginsFor = null;
+  pluginsView = null;
+  pluginUpdates = {};
+  pluginResults = null;
+  $("plugins-list").replaceChildren();
+  $("plugin-results").replaceChildren();
+  $("plugin-notes").hidden = true;
+  $("plugin-q").value = "";
+  $("plugins-restart").hidden = true;
+  showPluginsError(null);
+}
+
+async function loadPlugins() {
+  if (!selected) return;
+  const id = selected;
+  if (pluginsFor !== id) resetPlugins();
+  try {
+    const v = await api(sid() + "/plugins");
+    if (id !== selected) return;
+    const first = pluginsFor !== id;
+    pluginsFor = id;
+    renderPlugins(v);
+    showPluginsError(null);
+    if (first) {
+      api(sid() + "/plugins/updates").then((u) => {
+        if (id !== selected) return;
+        pluginUpdates = u || {};
+        if (pluginsView) renderPlugins(pluginsView);
+      }).catch(() => {});
+      if (me.owner && pluginResults === null) searchPlugins("");
+    }
+  } catch (err) { if (id === selected) showPluginsError(err); }
+}
+
+function renderPlugins(v) {
+  pluginsView = v;
+  if (pluginResults) renderPluginResults($("plugin-q").value.trim());
+  const owner = me.owner;
+  $("plugins-find").hidden = !owner;
+  $("plugins-ask").hidden = owner;
+  $("plugins-mc").textContent = v.minecraft || "…";
+  $("plugins-restart").hidden = !v.restartNeeded;
+  const enc = encodeURIComponent;
+  $("plugins-list").replaceChildren(...(v.plugins.length ? v.plugins.map((p) => {
+    const bits = [];
+    if (p.version) bits.push(p.version);
+    if (p.console) bits.push("console support, kept up to date by the panel");
+    else if (p.source) bits.push(`from ${p.source === "hangar" ? "Hangar" : "Modrinth"}` + (p.for ? ` (${p.for} needs it)` : ""));
+    else bits.push("added by hand");
+    const newer = pluginUpdates[p.file];
+    const title = p.page ? el("a", { href: p.page, target: "_blank", rel: "noopener noreferrer" }, p.title || p.name) : (p.title || p.name);
+    const name = el("span", { class: "who" }, el("span", {}, title,
+      p.enabled ? null : el("span", { class: "tag" }, "Off"),
+      newer ? el("span", { class: "tag warn" }, `${newer} available`) : null),
+      el("small", {}, bits.join(" · ")));
+    const buttons = [];
+    if (!p.console) {
+      if (owner && newer && p.source) buttons.push(btn("Update", (ev) => pluginCall(ev, () => post(`${sid()}/plugins/${enc(p.file)}/update`), () => { delete pluginUpdates[p.file]; }), "primary"));
+      buttons.push(btn(p.enabled ? "Turn off" : "Turn on", (ev) => pluginCall(ev, () => post(`${sid()}/plugins/${enc(p.file)}/enabled`, { enabled: !p.enabled }))));
+      if (owner) buttons.push(btn("Remove", (ev) => {
+        const users = v.plugins.filter((x) => x.enabled && (x.needs || []).some((n) => n.toLowerCase() === p.name.toLowerCase())).map((x) => x.title || x.name);
+        const warn = users.length ? `\n\n${users.join(", ")} needs it, and won't work without it.` : "";
+        if (!confirm(`Remove ${p.title || p.name}? Its settings folder is kept, in case you add it again.${warn}`)) return;
+        pluginCall(ev, () => del(`${sid()}/plugins/${enc(p.file)}`));
+      }, "danger"));
+    }
+    return el("li", { class: p.enabled ? "" : "off" }, name, ...buttons);
+  }) : [emptyRow(owner ? "No plugins yet. Find some below." : "No plugins yet.")]));
+}
+
+// pluginCall runs a plugin change, showing it's working on the button.
+async function pluginCall(ev, fn, after) {
+  const id = selected;
+  const b = ev && ev.currentTarget;
+  const label = b ? b.textContent : "";
+  if (b) { b.disabled = true; b.textContent = "Working…"; }
+  let ok = false;
+  try {
+    const v = await fn();
+    ok = true;
+    if (after) after();
+    if (id === selected) { showPluginsError(null); if (v && v.plugins) renderPlugins(v); }
+  } catch (err) { if (id === selected) showPluginsError(err); }
+  if (b && b.isConnected) { b.disabled = false; b.textContent = label; }
+  if (ok && id === selected) loadPlugins();
+  refresh();
+}
+
+let pluginSearchSeq = 0;
+
+async function searchPlugins(q) {
+  const id = selected;
+  const seq = ++pluginSearchSeq;
+  $("plugin-results").replaceChildren(emptyRow(q ? "Searching…" : "Loading popular plugins…"));
+  try {
+    const r = await api(`${sid()}/plugins/search?q=${encodeURIComponent(q)}`);
+    if (id !== selected || seq !== pluginSearchSeq) return; // a newer search is on its way
+    pluginResults = r.results || [];
+    $("plugin-notes").textContent = (r.notes || []).join(" ");
+    $("plugin-notes").hidden = !(r.notes || []).length;
+    renderPluginResults(q);
+  } catch (err) { if (id === selected && seq === pluginSearchSeq) { $("plugin-results").replaceChildren(); showPluginsError(err); } }
+}
+
+function renderPluginResults(q) {
+  const fmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n));
+  $("plugin-results").replaceChildren(...(pluginResults.length ? pluginResults.map((p) => {
+    const icon = p.icon ? el("img", { src: p.icon, alt: "", class: "plugin-icon", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "plugin-icon" });
+    const title = p.page ? el("a", { href: p.page, target: "_blank", rel: "noopener noreferrer" }, p.name) : p.name;
+    const who = el("span", { class: "who" }, el("span", {}, title, el("span", { class: "tag" }, p.source === "hangar" ? "Hangar" : "Modrinth")),
+      el("small", {}, [p.author ? "by " + p.author : "", `${fmt(p.downloads)} downloads`, p.description].filter(Boolean).join(" · ")));
+    const have = pluginsView && pluginsView.plugins.some((x) => x.source === p.source && x.id === p.id);
+    return el("li", {}, icon, who, have ? el("span", { class: "badge" }, "Installed")
+      : btn("Install", (ev) => pluginCall(ev, () => post(sid() + "/plugins", { source: p.source, id: p.id })), "primary"));
+  }) : [emptyRow(q ? "Nothing found for that version of Minecraft. Try other words." : "Nothing to show.")]));
+}
+
+$("plugin-search-form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  searchPlugins($("plugin-q").value.trim());
+});
+$("plugins-restart-now").addEventListener("click", async () => {
+  $("plugins-restart").hidden = true;
+  try { await post(sid() + "/restart"); } catch (err) { showPluginsError(err); }
+  refresh();
+});
+$("plugins-restart-later").addEventListener("click", () => { $("plugins-restart").hidden = true; });
+
 // Files dropped anywhere else would open in the browser and leave the panel.
 window.addEventListener("dragover", (ev) => ev.preventDefault());
 window.addEventListener("drop", (ev) => ev.preventDefault());
@@ -2241,6 +2388,7 @@ function signedOut() {
   resetSettings();
   resetBackups();
   resetAddons();
+  resetPlugins();
   selected = null;
   settings = {};
   me = { owner: false, canAdd: false, name: "" };

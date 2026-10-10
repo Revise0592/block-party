@@ -41,6 +41,8 @@ type Options struct {
 	GeyserAPI  string
 	HangarAPI  string
 	XboxLookup string
+	// Where Java plugins come from (Hangar is HangarAPI).
+	ModrinthAPI string
 	// Notify, when set, is told about things the owner may want to hear
 	// about (crashes, join attempts, failed backups…). It must not block.
 	Notify func(notify.Event)
@@ -68,7 +70,9 @@ type Manager struct {
 	latest     versionCache
 	paper      paperCache
 	plugins    pluginCache
-	javaMu     sync.Mutex // one Java runtime install at a time
+	// pluginUpdates: the newest release of each Java plugin, for update notes.
+	pluginUpdates pluginUpdateCache
+	javaMu        sync.Mutex // one Java runtime install at a time
 }
 
 // Meta is what the panel remembers about a server between restarts.
@@ -139,6 +143,7 @@ func New(opts Options) *Manager {
 		{&opts.PaperAPI, DefaultPaperAPI}, {&opts.AdoptiumAPI, DefaultAdoptiumAPI},
 		{&opts.MojangVersions, DefaultMojangVersion}, {&opts.MojangProfiles, DefaultMojangProfile},
 		{&opts.GeyserAPI, DefaultGeyserAPI}, {&opts.HangarAPI, DefaultHangarAPI}, {&opts.XboxLookup, DefaultXboxLookup},
+		{&opts.ModrinthAPI, DefaultModrinthAPI},
 	} {
 		if *d.v == "" {
 			*d.v = d.def

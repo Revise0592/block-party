@@ -141,6 +141,8 @@ type Server struct {
 	pluginsMu         sync.Mutex // one console plugin install at a time
 	consolesLive      bool       // the running process was started with Geyser and Floodgate
 	updatedConsoles   bool       // the update running installed new console plugins (for its notification)
+	pluginsChanged    time.Time  // when a Java plugin was last added, updated, removed or turned on or off
+	jarSums           sync.Map   // plugin jar path -> jarSum (SHA-256 while unchanged)
 }
 
 func newServer(m *Manager, meta Meta) *Server {

@@ -59,6 +59,8 @@ type fakeJavaWorld struct {
 	xbox      map[string]string
 	pluginGet int
 	badJars   bool // plugin downloads come back damaged
+	// Java plugins on the fake Hangar and Modrinth.
+	fakePlugins []*fakePlugin
 }
 
 // pluginJar is the fake jar of a console plugin build.
@@ -174,6 +176,8 @@ func newFakeJavaWorld(t *testing.T) *fakeJavaWorld {
 				return
 			}
 			fmt.Fprintf(w, `{"xuid":%s}`, x)
+		case p == "/hangar" || strings.HasPrefix(p, "/hangar/") || strings.HasPrefix(p, "/modrinth/") || strings.HasPrefix(p, "/pluginjar/"):
+			f.servePlugins(w, r)
 		default:
 			w.WriteHeader(404)
 		}
@@ -186,7 +190,7 @@ func newJavaManager(t *testing.T, f *fakeJavaWorld) *Manager {
 	t.Helper()
 	m := New(Options{DataDir: t.TempDir(), StopTimeout: time.Second,
 		PaperAPI: f.srv.URL + "/paper", AdoptiumAPI: f.srv.URL + "/adoptium", MojangVersions: f.srv.URL + "/manifest", MojangProfiles: f.srv.URL + "/profiles/",
-		GeyserAPI: f.srv.URL + "/geyser", HangarAPI: f.srv.URL + "/hangar", XboxLookup: f.srv.URL + "/xbox/"})
+		GeyserAPI: f.srv.URL + "/geyser", HangarAPI: f.srv.URL + "/hangar", XboxLookup: f.srv.URL + "/xbox/", ModrinthAPI: f.srv.URL + "/modrinth"})
 	if err := m.Load(); err != nil {
 		t.Fatal(err)
 	}

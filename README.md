@@ -98,7 +98,7 @@ Switch players can join without extra apps.
 
 ## Coming next
 
-Java plugins (search and install from Hangar), then Hytale.
+Hytale.
 
 ## Install
 
@@ -240,6 +240,26 @@ can't go back to an older version afterwards, so the backup made first is the
 way back.
 
 The Add-ons tab is for Bedrock servers.
+
+#### Plugins
+
+Java servers have a **Plugins** tab. The owner searches
+[Hangar](https://hangar.papermc.io) (PaperMC's plugin site) and
+[Modrinth](https://modrinth.com) together, and **Install** puts in the
+newest release made for the server's Minecraft version, plus any plugins it
+needs. Each download is checked against the site's checksum, and a plugin
+that's only offered on its own website isn't installed (the panel says
+where to get it). Plugins start the next time the server does; the tab
+offers a restart.
+
+- **Update** shows when a newer release is out (checked when you open the
+  tab). Moving the server to a new Minecraft version reminds you to check.
+- **Turn off** keeps a plugin but Paper skips it (it's renamed to
+  `.jar.disabled`); **Remove** deletes it and keeps its settings folder.
+- Plugins run their own code on your server, so only the owner installs,
+  updates and removes them. Kids who take care of a server see the list and
+  can turn plugins off and on.
+- Plugins you copy into `plugins/` yourself show as *added by hand*.
 
 #### Consoles on Java servers
 

@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -46,15 +47,16 @@ const (
 // plugins/ is fixed, so the panel only ever touches its own files.
 type consolePlugin struct {
 	Key      string // in Meta.Plugins
+	Name     string // its own name (plugin.yml)
 	File     string
 	Label    string
 	Required bool // without it consoles can't join
 }
 
 var consolePlugins = []consolePlugin{
-	{Key: "geyser", File: "Geyser-Spigot.jar", Label: "Geyser", Required: true},
-	{Key: "floodgate", File: "floodgate-spigot.jar", Label: "Floodgate", Required: true},
-	{Key: "viaversion", File: "ViaVersion.jar", Label: "ViaVersion"},
+	{Key: "geyser", Name: "Geyser-Spigot", File: "Geyser-Spigot.jar", Label: "Geyser", Required: true},
+	{Key: "floodgate", Name: "floodgate", File: "floodgate-spigot.jar", Label: "Floodgate", Required: true},
+	{Key: "viaversion", Name: "ViaVersion", File: "ViaVersion.jar", Label: "ViaVersion"},
 }
 
 // pluginRelease is a plugin build to download.
@@ -274,6 +276,24 @@ func (s *Server) ensureConsolePlugins(ctx context.Context) (updated bool, err er
 	dir := filepath.Join(s.dir(), "plugins")
 
 	if !on {
+		if jars, err := s.pluginJars(); err == nil {
+			var needs []string
+			for _, j := range jars {
+				if j.console || !j.enabled {
+					continue
+				}
+				for _, d := range j.depends {
+					if strings.EqualFold(d, "floodgate") || strings.EqualFold(d, "Geyser-Spigot") {
+						needs = append(needs, j.name)
+						break
+					}
+				}
+			}
+			if len(needs) > 0 {
+				sort.Strings(needs)
+				s.say("These plugins need console support and won't start without it: " + strings.Join(needs, ", ") + ".")
+			}
+		}
 		removed := false
 		for _, p := range consolePlugins {
 			if !p.Required {
@@ -295,9 +315,18 @@ func (s *Server) ensureConsolePlugins(ctx context.Context) (updated bool, err er
 		return false, err
 	}
 	var problems []string
+	jars, _ := s.pluginJars()
 	for _, p := range consolePlugins {
 		r, ok := releases[p.Key]
 		path := filepath.Join(dir, p.File)
+		if other := otherCopy(jars, p); other != "" {
+			// Two copies of a plugin make Paper refuse one of them: the
+			// one put in by hand is turned off.
+			old := filepath.Join(dir, other)
+			if err := os.Rename(old, old+disabledSuffix); err == nil {
+				s.say(fmt.Sprintf("Turned off %s, a second copy of %s, so console support's own copy is the one that runs.", other, p.Label))
+			}
+		}
 		if !ok {
 			why := "couldn't be found"
 			if e := errs[p.Key]; e != nil {
@@ -345,6 +374,17 @@ func (s *Server) ensureConsolePlugins(ctx context.Context) (updated bool, err er
 		return updated, errors.New("console support couldn't be " + what + ": " + strings.Join(problems, "; ") + ".")
 	}
 	return updated, nil
+}
+
+// otherCopy returns the file of another turned-on copy of a console plugin
+// (one put in by hand), or "".
+func otherCopy(jars map[string]jarEntry, p consolePlugin) string {
+	for file, j := range jars {
+		if j.enabled && !strings.EqualFold(file, p.File) && strings.EqualFold(j.name, p.Name) {
+			return file
+		}
+	}
+	return ""
 }
 
 // fileSHA256 returns a file's SHA-256 in hex.

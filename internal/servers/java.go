@@ -3,10 +3,12 @@ package servers
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"net/http"
 	"os"
@@ -328,8 +330,8 @@ func (m *Manager) ensureJava(ctx context.Context, major int, say func(string)) (
 	return filepath.Join(target, "bin", "java"), nil
 }
 
-// downloadVerified downloads url into dir and checks its SHA-256 when one is
-// given.
+// downloadVerified downloads url into dir and checks its SHA-256 (or
+// SHA-512) when one is given.
 func (m *Manager) downloadVerified(ctx context.Context, url, dir, sum string, say func(string), agent string) (string, error) {
 	file, err := m.downloadAs(ctx, url, dir, say, agent)
 	if err != nil {
@@ -343,7 +345,10 @@ func (m *Manager) downloadVerified(ctx context.Context, url, dir, sum string, sa
 		os.Remove(file)
 		return "", err
 	}
-	h := sha256.New()
+	var h hash.Hash = sha256.New()
+	if len(sum) == 128 { // Modrinth gives SHA-512
+		h = sha512.New()
+	}
 	_, err = io.Copy(h, f)
 	f.Close()
 	if err == nil && !strings.EqualFold(hex.EncodeToString(h.Sum(nil)), sum) {
@@ -435,6 +440,18 @@ func (s *Server) installJava(update bool) error {
 	}
 	_ = os.Remove(s.incompleteMarker())
 	s.say("Paper " + r.label() + " is installed.")
+	if update && current != "" && r.Version != current {
+		files, _ := s.pluginFiles()
+		others := 0
+		for f := range files {
+			if !isConsolePluginFile(f) {
+				others++
+			}
+		}
+		if others > 0 {
+			s.say("Plugins may need a new version for Minecraft " + r.Version + ": check the Plugins tab for updates.")
+		}
+	}
 	return s.installConsoles(ctx, false)
 }
 

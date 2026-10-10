@@ -539,6 +539,8 @@ table.ports .ok { color: var(--ok); }
 .upload-progress progress { flex: 1; height: 10px; }
 .people .tag { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); margin-left: 6px; }
 .people .tag.warn { color: var(--warn); border-color: currentColor; }
+.plugin-icon { width: 32px; height: 32px; border-radius: 6px; flex: none; background: var(--line); object-fit: cover; }
+.people .who a { color: inherit; }
 .people li.off .who > span:first-child { color: var(--muted); }
 label.button { margin: 0; }
 

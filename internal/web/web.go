@@ -179,6 +179,7 @@ func (s *Server) routes() http.Handler {
 	s.peopleRoutes(mux)
 	s.outsideRoutes(mux)
 	s.addonRoutes(mux)
+	s.pluginRoutes(mux)
 	s.lifecycleRoutes(mux)
 	s.notifyRoutes(mux)
 	return s.secure(mux)
@@ -205,7 +206,7 @@ func (s *Server) secure(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: https://cdn.modrinth.com https://hangarcdn.papermc.io https://hangar.papermc.io")
 		// A custom header can't be sent cross-site without the browser asking
 		// first, and we never allow that, so other websites can't press
 		// buttons (or sign you in to their account) through your browser.
