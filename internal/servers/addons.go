@@ -23,7 +23,7 @@ import (
 // survive updates, and stay with the world they were added to.
 
 // errJavaAddons: the Add-ons tab is for Bedrock servers.
-var errJavaAddons = errors.New("add-ons and world uploads are for Bedrock servers; Java servers get plugins later")
+var errJavaAddons = errors.New("add-ons and worlds are for Bedrock servers")
 
 // Pack is one add-on pack in a world.
 type Pack struct {
@@ -322,7 +322,7 @@ func installedPacks(worldDir string) map[string]map[string]Pack {
 
 // Packs lists the add-ons of the server's current world.
 func (s *Server) Packs() (PacksView, error) {
-	if s.isJava() {
+	if !s.isBedrock() {
 		return PacksView{}, errJavaAddons
 	}
 	s.filesMu.Lock()
@@ -462,7 +462,7 @@ type InstallResult struct {
 // .mcaddon) into the current world and turns its packs on. A pack that's
 // already there (the same ID) is replaced, as an update.
 func (s *Server) InstallPacks(ctx context.Context, upload string) (res InstallResult, err error) {
-	if s.isJava() {
+	if !s.isBedrock() {
 		return InstallResult{}, errJavaAddons
 	}
 	if err := s.EditBlocked(); err != nil {

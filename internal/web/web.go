@@ -180,6 +180,7 @@ func (s *Server) routes() http.Handler {
 	s.outsideRoutes(mux)
 	s.addonRoutes(mux)
 	s.pluginRoutes(mux)
+	s.hytaleRoutes(mux)
 	s.lifecycleRoutes(mux)
 	s.notifyRoutes(mux)
 	return s.secure(mux)
@@ -331,7 +332,7 @@ func (s *Server) createServer(w http.ResponseWriter, r *http.Request) {
 		Preview    bool   `json:"preview"`
 		AcceptEULA bool   `json:"acceptEula"`
 		Owner      string `json:"ownerGamertag"`
-		Edition    string `json:"edition"`  // "bedrock" (default) or "java"
+		Edition    string `json:"edition"`  // "bedrock" (default), "java" or "hytale"
 		JavaName   string `json:"javaName"` // Java: the adder's Minecraft Java username
 		MemoryMB   int    `json:"memoryMB"`
 	}
@@ -346,6 +347,15 @@ func (s *Server) createServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if !req.AcceptEULA {
 		writeError(w, http.StatusBadRequest, errors.New("accept the Minecraft EULA to download the server"))
+		return
+	}
+	if req.Edition == servers.TypeHytale {
+		st, err := s.mgr.CreateHytale(req.Name, req.MemoryMB)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		s.finishCreate(w, r, p, st)
 		return
 	}
 	if req.Edition == servers.TypeJava {

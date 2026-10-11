@@ -100,6 +100,7 @@ function greeting() {
 // needsUpdate says whether a server is behind the newest release, and
 // whether it's far behind (a different 1.x, or ten or more versions back).
 function needsUpdate(s) {
+  if (s.type === "hytale") return s.updateTo ? { far: false, to: s.updateTo } : null;
   if (s.type === "java") {
     if (!s.updateTo) return s.consolesUpdate ? { far: false, consoles: true } : null;
     const to = s.updateTo.split(" ")[0].split(".").map(Number), v = (s.version || "").split(".").map(Number);
@@ -163,7 +164,7 @@ function renderServerRow(s) {
     el("div", {}, stateEl(s)),
     el("div", { class: "cell-muted" }, playingText(s), s.waiting ? el("div", { class: "note warn" }, `${s.waiting} waiting to be let in`) : null),
     el("div", {},
-      el("div", { class: "mono" }, s.type === "java" ? (s.version ? "Java " + s.version : "Java") : (s.version || word("noVersion"))),
+      el("div", { class: "mono" }, s.type === "java" ? (s.version ? "Java " + s.version : "Java") : s.type === "hytale" ? (s.version ? "Hytale " + s.version : "Hytale") : (s.version || word("noVersion"))),
       upd && access(s) >= CARE ? el("div", { class: "note upd" + (upd.far ? " far" : "") }, upd.far ? "Well behind: update" : "Update ready") : null),
     el("div", { class: "cell-muted" }, whenShort(s.lastBackup)),
     el("div", { class: "acts" },
@@ -202,8 +203,10 @@ function renderDashboard(list, force) {
   $("update-banner").hidden = behind.length === 0;
   if (behind.length) {
     const javaTo = behind.find((s) => s.type === "java");
-    const headline = behind.some((s) => s.type !== "java") ? `Bedrock ${latestVersion} is out. `
-      : javaTo.updateTo ? `Paper ${javaTo.updateTo.split(" ")[0]} is out. ` : "New console support for Java servers is out. ";
+    const hytaleTo = behind.find((s) => s.type === "hytale");
+    const headline = behind.some((s) => s.type === "bedrock" || !s.type) ? `Bedrock ${latestVersion} is out. `
+      : hytaleTo && !javaTo ? `Hytale ${hytaleTo.updateTo} is out. `
+        : javaTo && javaTo.updateTo ? `Paper ${javaTo.updateTo.split(" ")[0]} is out. ` : "New console support for Java servers is out. ";
     $("update-banner-text").replaceChildren(el("b", {}, headline),
       `${behind.length} server${behind.length === 1 ? " can" : "s can"} update. Each one is backed up first and started again if it was running.`);
     $("update-all").textContent = behind.length === 1 ? "Update it" : `Update all ${behind.length}`;
@@ -301,7 +304,8 @@ function renderDetailHead(s) {
   $("detail-name").textContent = s.name;
   const upd = needsUpdate(s);
   $("detail-facts").replaceChildren(stateEl(s),
-    s.type === "java"
+    s.type === "hytale" ? el("span", {}, "Hytale ", el("span", { class: "mono" }, s.version || "…"))
+    : s.type === "java"
       ? el("span", {}, "Java ", el("span", { class: "mono" }, s.version || "…"), s.build ? el("span", { class: "muted" }, ` · Paper build ${s.build}`) : null,
         s.consoles ? el("span", { class: "muted", title: s.consolesLive ? "Consoles, phones and tablets can join now" : "Consoles can join while it's running with console support" }, " · consoles too") : null)
       : el("span", {}, "Bedrock ", el("span", { class: "mono" }, s.version || "…")),
@@ -316,7 +320,7 @@ function renderDetailHead(s) {
     el("button", { onclick: action(s.id, "restart"), disabled: !isLive(s) || busy }, "Restart"),
     access(s) >= CARE ? updBtn : null].filter(Boolean));
   for (const t of ["players", "settings", "addons", "backups"]) $("tab-" + t).hidden = copying;
-  $("tab-addons").hidden = copying || s.type === "java"; // Bedrock add-ons
+  $("tab-addons").hidden = copying || (s.type && s.type !== "bedrock"); // Bedrock add-ons
   $("tab-plugins").hidden = copying || s.type !== "java" || access(s) < CARE; // Java plugins
   $("ov-backups-link").textContent = access(s) >= CARE ? "Restore or download" : "See backups";
 }
@@ -427,7 +431,7 @@ function route() {
     const s = serverList.find((x) => x.id === id);
     let tabOK = !(s && s.state === "importing" && ["players", "settings", "addons", "plugins", "backups"].includes(t));
     if (s && t === "plugins" && (s.type !== "java" || access(s) < CARE)) tabOK = false;
-    if (s && t === "addons" && s.type === "java") tabOK = false;
+    if (s && t === "addons" && s.type && s.type !== "bedrock") tabOK = false;
     acceptedHash = location.hash;
     setView("server");
     showTab(tabOK ? t : "overview");
@@ -693,7 +697,7 @@ function renderPlayers(v) {
     $(k).hidden = !(v.java && v.consoles);
     if ($(k).hidden) $(k).value = "java";
   }
-  const nameWord = v.java ? "Java username" : "Gamertag";
+  const nameWord = v.hytale ? "Hytale username" : v.java ? "Java username" : "Gamertag";
   $("allow-name").placeholder = nameWord;
   $("op-name").placeholder = nameWord;
   $("allow-name").setAttribute("aria-label", nameWord + " to allow");
@@ -716,16 +720,16 @@ function renderPlayers(v) {
     `playing since ${new Date(p.since).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`,
     ops.has(p.name.toLowerCase()) ? el("span", { class: "badge" }, "operator")
       : btn("Make operator", () => playersCall(() => post(sid() + "/operators", { name: p.name }))),
-    btn("Message", () => {
+    v.hytale ? null : btn("Message", () => {
       const text = prompt(`Message to ${p.name}:`);
       if (text) playersCall(() => post(sid() + "/message", { name: p.name, text }));
     }),
-    btn("Kick", () => {
+    v.hytale ? null : btn("Kick", () => {
       const reason = prompt(`Kick ${p.name}? Optional reason:`, "");
       if (reason !== null) playersCall(() => post(sid() + "/kick", { name: p.name, reason }));
     }, "danger"),
   )) : [emptyRow(v.running ? "Nobody is playing." : "The server isn't running.")]));
-  $("say-form").hidden = !v.running;
+  $("say-form").hidden = !v.running || !!v.hytale;
 
   // Allowlist
   $("allow-enabled").checked = v.allowlistEnabled;
@@ -734,7 +738,9 @@ function renderPlayers(v) {
     ? "Only these players can join."
     : "Off: anyone who can reach the server can join. The list is kept for when you turn it back on.";
   $("allowlist").replaceChildren(...(v.allowlist.length ? v.allowlist.map((a) => row(v.java ? playerLabel(a.name, a.console) : a.name,
-    a.pending ? "added when the server next starts" : (v.java || a.xuid ? "" : "hasn't joined yet"),
+    a.pending ? "added when the server next starts"
+      : v.hytale ? (/^[0-9a-f-]{36}$/i.test(a.name) ? "hasn't played here yet (shown by account ID)" : "")
+        : (v.java || a.xuid ? "" : "hasn't joined yet"),
     ops.has(a.name.toLowerCase()) ? el("span", { class: "badge" }, "operator") : null,
     btn("Remove", () => {
       if (confirm(`Remove ${a.name} from the allowlist?`)) playersCall(() => del(sid() + "/allowlist/" + enc(a.name)));
@@ -878,6 +884,13 @@ function control(f) {
 function renderSettings() {
   const v = settingsView;
   if (!v) return;
+  const srv = serverList.find((x) => x.id === selected);
+  const hytale = !!srv && srv.type === "hytale";
+  $("raw-file").textContent = hytale ? "config.json" : "server.properties";
+  $("raw-text").setAttribute("aria-label", hytale ? "config.json" : "server.properties");
+  $("raw-help").textContent = hytale
+    ? "Hytale's own settings file (JSON). Hytale writes it while it runs, so stop the server to change settings here or above."
+    : "For settings that aren't above. The port and LAN settings are put back as the panel needs them. Changes apply after a restart.";
   $("settings-groups").replaceChildren(...v.groups.map((g) => el("div", { class: "card" },
     el("h3", {}, g.title),
     ...g.fields.map((f) => {
@@ -960,7 +973,7 @@ $("raw-save").addEventListener("click", async () => {
     await loadSettings();
     savedFor = id;
     const running = settingsView && settingsView.running;
-    $("settings-saved-text").textContent = "server.properties saved." + (running ? " Restart the server to apply it." : "");
+    $("settings-saved-text").textContent = $("raw-file").textContent + " saved." + (running ? " Restart the server to apply it." : "");
     $("settings-restart").hidden = !running;
     $("settings-saved").hidden = false;
   } catch (err) { showSettingsError(err); }
@@ -1022,7 +1035,11 @@ $("add-form").addEventListener("submit", async (ev) => {
   $("add-error").hidden = true;
   try {
     const java = editionChoice() === "java";
-    const s = await post("/api/servers", java ? {
+    const hytale = editionChoice() === "hytale";
+    const s = await post("/api/servers", hytale ? {
+      name: $("add-name").value, edition: "hytale",
+      memoryMB: Number($("add-memory").value), acceptEula: $("add-eula").checked,
+    } : java ? {
       name: $("add-name").value, edition: "java", javaName: $("add-java").value.trim(),
       memoryMB: Number($("add-memory").value), acceptEula: $("add-eula").checked,
     } : {
@@ -1030,7 +1047,7 @@ $("add-form").addEventListener("submit", async (ev) => {
       ownerGamertag: $("add-owner").value.trim(),
       acceptEula: $("add-eula").checked,
     });
-    if (me.owner && !java) settings.ownerGamertag = $("add-owner").value.trim();
+    if (me.owner && !java && !hytale) settings.ownerGamertag = $("add-owner").value.trim();
     if (me.owner && java && $("add-java").value.trim()) settings.ownerJavaName = $("add-java").value.trim();
     $("add-form").reset();
     await refresh();
@@ -1453,21 +1470,81 @@ function editionChoice() {
 }
 
 function showEdition() {
-  const java = editionChoice() === "java";
-  $("add-owner-label").hidden = java;
+  const edition = editionChoice();
+  const java = edition === "java", hytale = edition === "hytale";
+  $("add-owner-label").hidden = java || hytale;
   $("add-java-label").hidden = !java;
-  $("add-memory-label").hidden = !java;
-  $("edition-help").textContent = java
-    ? "For Minecraft: Java Edition on a PC or Mac. Runs Paper, which is faster than Mojang's own server and takes plugins. Consoles, phones and tablets can join too (through Geyser, installed for you)."
-    : "For consoles, phones, tablets and Windows: the Minecraft most kids play.";
-  $("add-source").textContent = java ? "Paper is downloaded from papermc.io, Java from adoptium.net, and console support from geysermc.org and hangar.papermc.io." : "The server is downloaded from Mojang.";
+  $("add-memory-label").hidden = !java && !hytale;
+  $("hytale-account").hidden = !hytale;
+  const mem = $("add-memory");
+  if (hytale && Number(mem.value) < 4096) mem.value = "4096";
+  if (java && mem.dataset.edition === "hytale") mem.value = "2048";
+  mem.dataset.edition = edition;
+  $("edition-help").textContent = hytale
+    ? "For Hytale. The server is downloaded with your Hytale account, and needs at least 4 GB of memory. Players join with the address and port."
+    : java
+      ? "For Minecraft: Java Edition on a PC or Mac. Runs Paper, which is faster than Mojang's own server and takes plugins. Consoles, phones and tablets can join too (through Geyser, installed for you)."
+      : "For consoles, phones, tablets and Windows: the Minecraft most kids play.";
+  $("add-eula-name").textContent = hytale ? "Hytale EULA" : "Minecraft EULA";
+  $("add-eula-link").href = hytale ? "https://hytale.com/eula" : "https://www.minecraft.net/eula";
+  $("add-source").textContent = hytale ? "The server is downloaded from Hytale, and Java from adoptium.net."
+    : java ? "Paper is downloaded from papermc.io, Java from adoptium.net, and console support from geysermc.org and hangar.papermc.io." : "The server is downloaded from Mojang.";
+  const submit = document.querySelector("#add-form button[type=submit]");
+  if (submit) submit.disabled = hytale && !hytaleSignedIn;
+  if (hytale) loadHytaleAccount();
   if (java && !$("add-java").value) $("add-java").value = me.owner ? settings.ownerJavaName || "" : "";
 }
 for (const r of document.querySelectorAll("input[name=edition]")) r.addEventListener("change", showEdition);
 
+// ---- Hytale account ----
+
+let hytaleTimer = null;
+let hytaleSignedIn = false;
+
+async function loadHytaleAccount() {
+  clearTimeout(hytaleTimer);
+  try { renderHytaleAccount(await api("/api/hytale/account")); } catch (err) { $("hytale-status").textContent = err.message; }
+}
+
+function renderHytaleAccount(v) {
+  hytaleSignedIn = !!v.signedIn;
+  const p = v.pending;
+  $("hytale-code").hidden = !(p && p.code);
+  if (p && p.code) {
+    $("hytale-step").textContent = `Step ${p.step} of ${p.of} (${p.for}):`;
+    $("hytale-link").href = p.url;
+    $("hytale-usercode").textContent = p.code;
+  }
+  $("hytale-status").textContent = v.signedIn
+    ? `Signed in to Hytale as ${v.username || "your account"}. New Hytale servers are downloaded and signed in with it.`
+    : p ? "Signing in to Hytale: the panel needs two codes, one for downloads and one for servers."
+      : me.owner ? "Hytale servers need your Hytale account: the panel downloads the server with it and signs servers in so players can join. You sign in once." + (v.error ? " " + v.error : "")
+        : "The owner has to sign the panel in to Hytale before Hytale servers can be added.";
+  $("hytale-signin").hidden = !me.owner || v.signedIn || !!p;
+  $("hytale-cancel").hidden = !me.owner || !p;
+  $("hytale-signout").hidden = !me.owner || !v.signedIn || !!p;
+  const submit = document.querySelector("#add-form button[type=submit]");
+  if (submit) submit.disabled = editionChoice() === "hytale" && !v.signedIn;
+  if (p && view === "add") hytaleTimer = setTimeout(loadHytaleAccount, 3000);
+}
+
+$("hytale-signin").addEventListener("click", async (ev) => {
+  ev.currentTarget.disabled = true;
+  try { renderHytaleAccount(await post("/api/hytale/signin")); } catch (err) { $("hytale-status").textContent = err.message; }
+  ev.target.disabled = false;
+});
+$("hytale-cancel").addEventListener("click", async () => {
+  try { renderHytaleAccount(await post("/api/hytale/signin/cancel")); } catch (err) { $("hytale-status").textContent = err.message; }
+  setTimeout(loadHytaleAccount, 1000);
+});
+$("hytale-signout").addEventListener("click", async () => {
+  if (!confirm("Sign the panel out of Hytale? Hytale servers can't be updated or started until you sign in again.")) return;
+  try { renderHytaleAccount(await del("/api/hytale/account")); } catch (err) { $("hytale-status").textContent = err.message; }
+});
+
 function renderMemory() {
   const s = serverList.find((x) => x.id === selected);
-  const show = !!s && s.type === "java" && access(s) >= CARE;
+  const show = !!s && (s.type === "java" || s.type === "hytale") && access(s) >= CARE;
   $("memory-card").hidden = !show;
   if (!show) return;
   const sel = $("memory-select");
@@ -1962,6 +2039,12 @@ function importRow(c) {
 
 // inviteText tells a friend how to join a server from outside the house.
 function inviteText(v, name) {
+  if (v.hytale) {
+    return [`Come play on "${name}" with me in Hytale!`, "",
+      "Open Hytale, go to Servers, choose Add Server, and type",
+      `  Address: ${v.address}:${v.port}`, "",
+      "Send me your Hytale username first so I can put you on the allowlist."].join("\n");
+  }
   const javaLines = ["Open Minecraft (Java Edition) on your PC or Mac, choose Multiplayer, then Add Server, and type",
     `  Server Address: ${v.address}:${v.port}`, ""];
   if (v.java && !v.javaConsoles) {

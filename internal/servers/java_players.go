@@ -150,6 +150,9 @@ func (s *Server) javaCommandIfRunning(line string) bool {
 // server runs, otherwise in the files (or later, if the account can't be
 // looked up now).
 func (s *Server) javaChange(name, action string) (pending bool, err error) {
+	if s.isHytale() {
+		return s.hytaleChange(name, action)
+	}
 	if isConsoleName(name) {
 		return s.consoleChange(name, action)
 	}
@@ -204,7 +207,8 @@ func (s *Server) javaChange(name, action string) (pending bool, err error) {
 // dropJavaPending removes a queued change for a name (any queued change that
 // the new one replaces).
 func (s *Server) dropJavaPending(name, action string) {
-	opposite := map[string]string{"allow": "unallow", "unallow": "allow", "op": "deop", "deop": "op"}[action]
+	opposite := map[string]string{"allow": "unallow", "unallow": "allow", "op": "deop", "deop": "op",
+		"allowlist-on": "allowlist-off", "allowlist-off": "allowlist-on"}[action]
 	s.mu.Lock()
 	kept := s.meta.JavaPending[:0]
 	changed := false

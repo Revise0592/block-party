@@ -89,6 +89,9 @@ func main() {
 		HangarAPI:      os.Getenv("HANGAR_API"),
 		XboxLookup:     os.Getenv("XBOX_LOOKUP"),
 		ModrinthAPI:    os.Getenv("MODRINTH_API"),
+		HytaleOAuth:    os.Getenv("HYTALE_OAUTH"),
+		HytaleAccounts: os.Getenv("HYTALE_ACCOUNTS"),
+		HytaleSessions: os.Getenv("HYTALE_SESSIONS"),
 	})
 	if err := mgr.Load(); err != nil {
 		slog.Error("could not read the servers folder", "error", err)
@@ -96,6 +99,7 @@ func main() {
 	}
 	mgr.StartAutoStart()
 	mgr.RunBackupSchedule()
+	mgr.RunHytaleKeepAlive()
 	zone, _ := time.Now().Zone()
 	slog.Info("scheduled backups use the container's time zone; set TZ to change it", "timeZone", time.Local.String(), "abbrev", zone, "now", time.Now().Format("15:04"))
 

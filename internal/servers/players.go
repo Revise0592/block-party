@@ -36,6 +36,8 @@ type PlayersView struct {
 	// Consoles: console players can be added too (a Java server with
 	// console support; their names start with ".").
 	Consoles bool `json:"consoles,omitempty"`
+	// Hytale: names are Hytale usernames.
+	Hytale bool `json:"hytale,omitempty"`
 }
 
 // ListedName is a player on the allowlist or an operator.
@@ -170,6 +172,9 @@ func (s *Server) allowlistEnabled() bool {
 
 // Players returns the Players page for this server.
 func (s *Server) Players() (PlayersView, error) {
+	if s.isHytale() {
+		return s.hytalePlayers()
+	}
 	if s.isJava() {
 		return s.javaPlayers()
 	}
@@ -239,12 +244,16 @@ func (s *Server) Players() (PlayersView, error) {
 // AllowlistAdd adds a player to the allowlist. xuid may be empty; Bedrock
 // fills it in when they join.
 func (s *Server) AllowlistAdd(name, xuid string) error {
-	if s.isJava() {
+	if !s.isBedrock() {
 		pending, err := s.javaChange(name, "allow")
 		if err == nil {
 			s.dismissAttempt(javaListName(name))
 			if pending {
-				s.say(whoName(name) + " will be added to the allowlist when the server next starts (their account couldn't be looked up now).")
+				if s.isHytale() {
+					s.say(name + " will be added to the allowlist when the server next starts.")
+				} else {
+					s.say(whoName(name) + " will be added to the allowlist when the server next starts (their account couldn't be looked up now).")
+				}
 			} else {
 				s.say(whoName(name) + " was added to the allowlist.")
 			}
@@ -288,7 +297,7 @@ func (s *Server) AllowlistAdd(name, xuid string) error {
 // AllowlistRemove takes a player off the allowlist. Someone who's playing
 // stays until they leave; use Kick to remove them now.
 func (s *Server) AllowlistRemove(name string) error {
-	if s.isJava() {
+	if !s.isBedrock() {
 		_, err := s.javaChange(name, "unallow")
 		if err == nil {
 			s.say(whoName(name) + " was removed from the allowlist.")
@@ -325,6 +334,17 @@ func (s *Server) AllowlistRemove(name string) error {
 
 // SetAllowlistEnabled turns the allowlist on or off.
 func (s *Server) SetAllowlistEnabled(on bool) error {
+	if s.isHytale() {
+		if err := s.setHytaleAllowlist(on); err != nil {
+			return err
+		}
+		if on {
+			s.say("The allowlist is on: only players on it can join.")
+		} else {
+			s.say("The allowlist is off: anyone who can reach the server can join.")
+		}
+		return nil
+	}
 	value := "false"
 	command := "allowlist off"
 	if on {
@@ -372,7 +392,7 @@ func (s *Server) SetAllowlistEnabled(on bool) error {
 // OpAdd makes a player an operator. It returns pending=true if they haven't
 // joined yet, in which case it's applied on their first join.
 func (s *Server) OpAdd(name string) (pending bool, err error) {
-	if s.isJava() {
+	if !s.isBedrock() {
 		pending, err = s.javaChange(name, "op")
 		if err == nil {
 			if pending {
@@ -427,7 +447,7 @@ func (s *Server) OpAdd(name string) (pending bool, err error) {
 // OpRemove takes operator away. key is a gamertag, or an XUID for operators
 // the panel doesn't know by name.
 func (s *Server) OpRemove(key string) error {
-	if s.isJava() {
+	if !s.isBedrock() {
 		_, err := s.javaChange(key, "deop")
 		if err == nil {
 			s.say(whoName(key) + " is no longer an operator.")
@@ -543,6 +563,9 @@ func (s *Server) onJoin(name, xuid string) {
 
 // Kick disconnects a player.
 func (s *Server) Kick(name, reason string) error {
+	if s.isHytale() {
+		return errHytaleNotYet
+	}
 	var err error
 	if s.isJava() {
 		name, err = cleanJavaPlayer(name)
@@ -566,6 +589,9 @@ func (s *Server) Kick(name, reason string) error {
 // Message sends a chat message to one player, or to everyone if name is
 // empty.
 func (s *Server) Message(name, text string) error {
+	if s.isHytale() {
+		return errHytaleNotYet
+	}
 	text = oneLine(text, 200)
 	if text == "" {
 		return errors.New("type a message")
@@ -600,6 +626,9 @@ func oneLine(s string, max int) string {
 // noteJoinAttempt records a player the console menu sent here, if they
 // aren't on the allowlist.
 func (s *Server) noteJoinAttempt(name, xuid string, verified bool) {
+	if s.isHytale() {
+		return
+	}
 	if !s.allowlistEnabled() {
 		return
 	}

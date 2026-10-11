@@ -69,7 +69,7 @@ func (m *Manager) getJSON(ctx context.Context, url string, v any) error {
 	req.Header.Set("Accept", "application/json")
 	resp, err := m.http().Do(req)
 	if err != nil {
-		return err
+		return plainErr(url, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -333,7 +333,12 @@ func (m *Manager) ensureJava(ctx context.Context, major int, say func(string)) (
 // downloadVerified downloads url into dir and checks its SHA-256 (or
 // SHA-512) when one is given.
 func (m *Manager) downloadVerified(ctx context.Context, url, dir, sum string, say func(string), agent string) (string, error) {
-	file, err := m.downloadAs(ctx, url, dir, say, agent)
+	return m.downloadLimited(ctx, url, dir, sum, say, agent, maxDownload)
+}
+
+// downloadLimited is downloadVerified for files up to limit bytes.
+func (m *Manager) downloadLimited(ctx context.Context, url, dir, sum string, say func(string), agent string, limit int64) (string, error) {
+	file, err := m.downloadAsLimit(ctx, url, dir, say, agent, limit)
 	if err != nil {
 		return "", err
 	}
@@ -559,8 +564,8 @@ func (s *Server) javaCommand() (string, []string, error) {
 // SetMemory sets how much memory a Java server may use (in MB), from the next
 // start.
 func (s *Server) SetMemory(mb int) error {
-	if !s.isJava() {
-		return errors.New("only Java servers have a memory setting")
+	if s.isBedrock() {
+		return errors.New("only Java and Hytale servers have a memory setting")
 	}
 	if mb < 512 || mb > 32768 {
 		return errors.New("pick between 512 MB and 32 GB")

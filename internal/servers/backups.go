@@ -334,7 +334,9 @@ func (s *Server) snapshot(ctx context.Context, held *exec.Cmd) (string, error) {
 	} else {
 		s.say("Backing up (the server keeps running)…")
 		var listed map[string]int64
-		if s.isJava() {
+		if s.isHytale() {
+			err = s.hytaleHoldSave(ctx, held) // saved a moment ago; copy it all
+		} else if s.isJava() {
 			err = s.javaHoldSave(ctx, held) // everything is saved; copy it all
 		} else {
 			listed, err = s.holdSave(ctx, held)
@@ -416,6 +418,9 @@ func (s *Server) holdSave(ctx context.Context, held *exec.Cmd) (map[string]int64
 // resumeSave lets the server save again. It retries for a few seconds if the
 // command can't be queued, because a server left on hold never saves.
 func (s *Server) resumeSave(held *exec.Cmd) {
+	if s.isHytale() {
+		return // Hytale's saving wasn't paused
+	}
 	for i := 0; i < 40; i++ {
 		s.mu.Lock()
 		if s.cmd != held {
@@ -531,7 +536,19 @@ func settingsFiles() []string {
 	for f := range keepOnUpdate {
 		out = append(out, f)
 	}
-	out = append(out, javaSettingsFiles...) // Java servers' other lists and settings
+	out = append(out, javaSettingsFiles...)   // Java servers' other lists and settings
+	out = append(out, hytaleSettingsFiles...) // and Hytale servers'
+	sort.Strings(out)
+	return dedupe(out)
+}
+
+func dedupe(sorted []string) []string {
+	var out []string
+	for i, s := range sorted {
+		if i == 0 || s != sorted[i-1] {
+			out = append(out, s)
+		}
+	}
 	sort.Strings(out)
 	return out
 }
@@ -553,6 +570,18 @@ func copyWorld(ctx context.Context, dir, snap string, listed map[string]int64) e
 	// Java servers' settings folders (Paper's config, plugins and theirs).
 	// Bedrock servers have a config/ folder of their own, which isn't
 	// settings: only a Java server's (it has paper.jar) are kept.
+	// A Hytale server's worlds (universe/) and mods.
+	for _, name := range hytaleDirs {
+		if !fileExists(filepath.Join(dir, hytaleJar)) {
+			break
+		}
+		src := filepath.Join(dir, name)
+		if st, err := os.Lstat(src); err == nil && st.IsDir() {
+			if err := copyWorldFolder(src, filepath.Join(snap, name)); err != nil {
+				return err
+			}
+		}
+	}
 	for _, name := range javaSettingsDirs {
 		if !fileExists(filepath.Join(dir, paperJar)) {
 			break
@@ -853,6 +882,9 @@ func (s *Server) restore(archive *os.File, name string) error {
 	if _, err := os.Stat(filepath.Join(staging, paperJar)); err == nil {
 		full = true // a Java server's backup from before an update
 	}
+	if _, err := os.Stat(filepath.Join(staging, hytaleJar)); err == nil {
+		full = true // a Hytale server's whole folder
+	}
 
 	// Back up what's there now, so the restore can be undone.
 	s.say("Backing up the current world first, so this can be undone…")
@@ -876,6 +908,11 @@ func (s *Server) restore(archive *os.File, name string) error {
 	}
 	if s.isJava() {
 		for _, d := range javaSettingsDirs {
+			allowed[d] = true
+		}
+	}
+	if s.isHytale() {
+		for _, d := range hytaleDirs {
 			allowed[d] = true
 		}
 	}

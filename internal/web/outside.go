@@ -96,6 +96,7 @@ type serverOutsideView struct {
 	Java       bool   `json:"java"`
 	// JavaConsoles: a Java server consoles can join too (same port, UDP).
 	JavaConsoles bool `json:"javaConsoles,omitempty"`
+	Hytale       bool `json:"hytale,omitempty"`
 }
 
 func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsideView {
@@ -106,6 +107,7 @@ func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsi
 		Java: ss.Type == servers.TypeJava,
 	}
 	v.JavaConsoles = v.Java && ss.Consoles
+	v.Hytale = ss.Type == servers.TypeHytale
 	protos := outside.Server{Java: v.Java, JavaConsoles: v.JavaConsoles}.Protocols()
 	// The address consoles outside use as their DNS: where the address
 	// friends use leads (it's never a home address; see outside).

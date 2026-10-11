@@ -43,6 +43,10 @@ type Options struct {
 	XboxLookup string
 	// Where Java plugins come from (Hangar is HangarAPI).
 	ModrinthAPI string
+	// Hytale's sign-in, account and session services.
+	HytaleOAuth    string
+	HytaleAccounts string
+	HytaleSessions string
 	// Notify, when set, is told about things the owner may want to hear
 	// about (crashes, join attempts, failed backups…). It must not block.
 	Notify func(notify.Event)
@@ -72,6 +76,8 @@ type Manager struct {
 	plugins    pluginCache
 	// pluginUpdates: the newest release of each Java plugin, for update notes.
 	pluginUpdates pluginUpdateCache
+	hytale        hytaleAuth
+	hytaleLatest  hytaleCache
 	javaMu        sync.Mutex // one Java runtime install at a time
 }
 
@@ -121,6 +127,9 @@ type Meta struct {
 	// 9)"), by key.
 	NoConsoles bool              `json:"noConsoles,omitempty"`
 	Plugins    map[string]string `json:"plugins,omitempty"`
+	// HytaleNames are the Hytale players the server has seen (account ID →
+	// name), since Hytale's lists keep account IDs.
+	HytaleNames map[string]string `json:"hytaleNames,omitempty"`
 	// LastNightly is the night (its date) overnight upkeep last acted on
 	// the server, so a panel restart doesn't do it twice.
 	LastNightly string `json:"lastNightly,omitempty"`
@@ -144,6 +153,7 @@ func New(opts Options) *Manager {
 		{&opts.MojangVersions, DefaultMojangVersion}, {&opts.MojangProfiles, DefaultMojangProfile},
 		{&opts.GeyserAPI, DefaultGeyserAPI}, {&opts.HangarAPI, DefaultHangarAPI}, {&opts.XboxLookup, DefaultXboxLookup},
 		{&opts.ModrinthAPI, DefaultModrinthAPI},
+		{&opts.HytaleOAuth, DefaultHytaleOAuth}, {&opts.HytaleAccounts, DefaultHytaleAccounts}, {&opts.HytaleSessions, DefaultHytaleSessions},
 	} {
 		if *d.v == "" {
 			*d.v = d.def
@@ -236,6 +246,18 @@ func (m *Manager) StartAutoStart() {
 		s.mu.Lock()
 		want := s.meta.AutoStart && s.state == StateStopped // not after an error, such as a half-applied update
 		s.mu.Unlock()
+		if want && s.isHytale() {
+			// It asks Hytale for a session first: don't hold up the others.
+			if m.beginWork() {
+				go func() {
+					defer m.work.Done()
+					if err := s.Start(); err != nil {
+						m.log.Warn("could not start a server", "id", s.ID(), "error", err)
+					}
+				}()
+			}
+			continue
+		}
 		if want {
 			if err := s.Start(); err != nil {
 				m.log.Warn("could not start a server", "id", s.ID(), "error", err)
@@ -353,6 +375,9 @@ func (m *Manager) Joinable() []Joinable {
 	for _, s := range m.all() {
 		st := s.Status()
 		running := st.State == StateRunning
+		if st.Type == TypeHytale {
+			continue // not a Minecraft server
+		}
 		if st.Type == TypeJava {
 			if !st.Consoles {
 				continue // Java players only
@@ -382,12 +407,21 @@ func (m *Manager) CreateJava(name string, memoryMB int, names ...string) (Status
 	return m.create(TypeJava, name, false, memoryMB, names)
 }
 
+// CreateHytale sets up a new Hytale server, downloading it (with the
+// panel's Hytale sign-in) and the Java it needs.
+func (m *Manager) CreateHytale(name string, memoryMB int) (Status, error) {
+	if !m.HytaleSignedIn() {
+		return Status{}, ErrHytaleSignIn
+	}
+	return m.create(TypeHytale, name, false, memoryMB, nil)
+}
+
 func (m *Manager) create(typ, name string, preview bool, memoryMB int, extra []string) (Status, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || len([]rune(name)) > 40 || strings.ContainsAny(name, "\r\n\t") {
 		return Status{}, errNameInvalid
 	}
-	if typ == TypeJava && memoryMB != 0 && (memoryMB < 512 || memoryMB > 32768) {
+	if typ != TypeBedrock && memoryMB != 0 && (memoryMB < 512 || memoryMB > 32768) {
 		return Status{}, errors.New("pick between 512 MB and 32 GB of memory")
 	}
 	var ops []string

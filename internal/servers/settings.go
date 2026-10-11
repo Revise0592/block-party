@@ -279,6 +279,9 @@ func (s *Server) propertiesPath() string { return filepath.Join(s.dir(), "server
 
 // Settings returns the Settings tab for this server.
 func (s *Server) Settings() (SettingsView, error) {
+	if s.isHytale() {
+		return s.hytaleSettings()
+	}
 	s.filesMu.Lock()
 	p, err := readProperties(s.propertiesPath())
 	s.filesMu.Unlock()
@@ -321,6 +324,9 @@ type SettingsChange struct {
 // SaveSettings validates and writes changed settings. Either all are saved
 // or none are. It returns what changed.
 func (s *Server) SaveSettings(values map[string]string) ([]SettingsChange, error) {
+	if s.isHytale() {
+		return s.saveHytaleSettings(values)
+	}
 	keys := make([]string, 0, len(values))
 	for k := range values {
 		keys = append(keys, k)
@@ -394,7 +400,14 @@ const maxRawProperties = 256 << 10
 func (s *Server) RawProperties() (string, error) {
 	s.filesMu.Lock()
 	defer s.filesMu.Unlock()
-	b, err := os.ReadFile(s.propertiesPath())
+	path := s.propertiesPath()
+	if s.isHytale() {
+		path = s.hytaleConfigPath()
+	}
+	b, err := os.ReadFile(path)
+	if s.isHytale() && errors.Is(err, os.ErrNotExist) {
+		return "", errors.New("config.json is made when the server first starts")
+	}
 	return string(b), err
 }
 
@@ -410,6 +423,9 @@ func (s *Server) SaveRawProperties(text string) error {
 	}
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
+	if s.isHytale() {
+		return s.saveHytaleRawConfig(text)
+	}
 	p := &properties{lines: strings.Split(strings.TrimRight(text, "\n"), "\n")}
 	if dups := p.duplicates(); len(dups) > 0 {
 		return fmt.Errorf("these settings appear more than once, so it isn't clear which value counts: %s", strings.Join(dups, ", "))

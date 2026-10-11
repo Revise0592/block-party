@@ -39,8 +39,23 @@ func outsideProblemFor(p *properties, java bool) string {
 // now, or "".
 func (s *Server) OutsideProblem() string {
 	s.filesMu.Lock()
+	defer s.filesMu.Unlock()
+	return s.outsideProblemLocked()
+}
+
+// outsideProblemLocked is OutsideProblem for callers holding filesMu.
+func (s *Server) outsideProblemLocked() string {
+	if s.isHytale() {
+		on, err := s.hytaleAllowlistOn()
+		if err != nil {
+			return "its whitelist.json can't be read"
+		}
+		if !on {
+			return "the allowlist is off"
+		}
+		return ""
+	}
 	p, err := readProperties(s.propertiesPath())
-	s.filesMu.Unlock()
 	if err != nil {
 		return "its server.properties can't be read"
 	}
@@ -51,7 +66,7 @@ func (s *Server) OutsideProblem() string {
 // the server is open to friends outside.
 func (s *Server) outsideCommand(line string) error {
 	f := strings.Fields(strings.ToLower(strings.TrimPrefix(line, "/")))
-	if len(f) >= 2 && (f[0] == "allowlist" || f[0] == "whitelist") && f[1] == "off" && s.Outside() {
+	if len(f) >= 2 && (f[0] == "allowlist" || f[0] == "whitelist") && (f[1] == "off" || f[1] == "disable") && s.Outside() {
 		return ErrOutsideOpen
 	}
 	return nil
@@ -79,12 +94,7 @@ func (s *Server) SetOutside(open bool) error {
 	// off in between (those changes check the mark under the same locks).
 	s.filesMu.Lock()
 	if open {
-		p, err := readProperties(s.propertiesPath())
-		problem := "its server.properties can't be read"
-		if err == nil {
-			problem = outsideProblemFor(p, s.isJava())
-		}
-		if problem != "" {
+		if problem := s.outsideProblemLocked(); problem != "" {
 			s.filesMu.Unlock()
 			return fmt.Errorf("it can't be opened to friends outside while %s", problem)
 		}

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -92,6 +93,25 @@ func (m *Manager) http() *http.Client {
 	return &http.Client{Timeout: 30 * time.Minute}
 }
 
+// bigHTTP is for downloads that may take hours on a slow line: no overall
+// time limit (the caller's context sets one).
+func (m *Manager) bigHTTP() *http.Client {
+	if m.opts.HTTPClient != nil {
+		return m.opts.HTTPClient
+	}
+	return &http.Client{}
+}
+
+// plainErr drops the address from a request error: download addresses can
+// carry short-lived keys, and errors end up on the console.
+func plainErr(u string, err error) error {
+	var ue *neturl.Error
+	if errors.As(err, &ue) {
+		return fmt.Errorf("%s: %w", hostOf(u), ue.Err)
+	}
+	return err
+}
+
 // download fetches url into a file in dir and returns its path.
 func (m *Manager) download(ctx context.Context, url, dir string, say func(string)) (string, error) {
 	return m.downloadAs(ctx, url, dir, say, m.userAgent())
@@ -99,14 +119,23 @@ func (m *Manager) download(ctx context.Context, url, dir string, say func(string
 
 // downloadAs is download with a given User-Agent.
 func (m *Manager) downloadAs(ctx context.Context, url, dir string, say func(string), agent string) (string, error) {
+	return m.downloadAsLimit(ctx, url, dir, say, agent, maxDownload)
+}
+
+// downloadAsLimit is downloadAs for files that may be bigger than usual.
+func (m *Manager) downloadAsLimit(ctx context.Context, url, dir string, say func(string), agent string, limit int64) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("User-Agent", agent)
-	resp, err := m.http().Do(req)
+	client := m.http()
+	if limit > maxDownload {
+		client = m.bigHTTP()
+	}
+	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("download failed: %w", err)
+		return "", fmt.Errorf("download failed: %w", plainErr(url, err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -123,8 +152,8 @@ func (m *Manager) downloadAs(ctx context.Context, url, dir string, say func(stri
 	} else {
 		say("Downloading…")
 	}
-	n, err := io.Copy(f, io.LimitReader(resp.Body, maxDownload+1))
-	if err == nil && n > maxDownload {
+	n, err := io.Copy(f, io.LimitReader(resp.Body, limit+1))
+	if err == nil && n > limit {
 		err = errors.New("download is larger than expected")
 	}
 	if err == nil && size > 0 && n != size {
@@ -288,6 +317,9 @@ func backup(ctx context.Context, dir, backupDir, id, kind string, keep int) (str
 	gz := gzip.NewWriter(f)
 	tw := tar.NewWriter(gz)
 	walkErr := filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+		if err != nil && p != dir && errors.Is(err, os.ErrNotExist) {
+			return nil // gone meanwhile (a temporary file being saved)
+		}
 		if err != nil {
 			return err
 		}
@@ -300,6 +332,21 @@ func backup(ctx context.Context, dir, backupDir, id, kind string, keep int) (str
 		}
 		if !info.IsDir() && !info.Mode().IsRegular() {
 			return nil
+		}
+		// Open first and take the size from the open file: a file that's
+		// replaced or grows meanwhile (the panel's own details) is copied as
+		// it was when opened.
+		var in *os.File
+		if !info.IsDir() {
+			if in, err = os.Open(p); errors.Is(err, os.ErrNotExist) {
+				return nil // gone meanwhile
+			} else if err != nil {
+				return err
+			}
+			defer in.Close()
+			if info, err = in.Stat(); err != nil {
+				return err
+			}
 		}
 		hdr, err := tar.FileInfoHeader(info, "")
 		if err != nil {
@@ -315,12 +362,7 @@ func backup(ctx context.Context, dir, backupDir, id, kind string, keep int) (str
 		if info.IsDir() {
 			return nil
 		}
-		in, err := os.Open(p)
-		if err != nil {
-			return err
-		}
-		defer in.Close()
-		_, err = io.Copy(tw, in)
+		_, err = io.CopyN(tw, in, hdr.Size)
 		return err
 	})
 	for _, c := range []io.Closer{tw, gz, f} {

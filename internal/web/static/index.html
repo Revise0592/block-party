@@ -139,6 +139,7 @@
           <div class="segmented" role="radiogroup" aria-label="Edition">
             <label><input type="radio" name="edition" value="bedrock" checked><span>Bedrock</span></label>
             <label><input type="radio" name="edition" value="java"><span>Java (Paper)</span></label>
+            <label><input type="radio" name="edition" value="hytale"><span>Hytale</span></label>
           </div>
           <p class="muted small" id="edition-help">For consoles, phones, tablets and Windows: the Minecraft most kids play.</p>
         </fieldset>
@@ -151,6 +152,19 @@
         <label id="add-java-label" hidden>Your Minecraft Java username
           <input id="add-java" maxlength="16" placeholder="Optional: you'll be on the allowlist and an operator" autocomplete="off" autocapitalize="off" spellcheck="false">
         </label>
+        <div id="hytale-account" class="notice-box" hidden>
+          <p id="hytale-status" class="small"></p>
+          <div id="hytale-code" hidden>
+            <p class="small"><b id="hytale-step"></b> Open <a id="hytale-link" href="#" target="_blank" rel="noopener noreferrer">Hytale's sign-in page</a> and enter this code:</p>
+            <p class="code-big mono" id="hytale-usercode"></p>
+            <p class="muted small">Waiting for you to sign in… This page updates by itself.</p>
+          </div>
+          <div class="row">
+            <button type="button" id="hytale-signin" class="primary" hidden>Sign in to Hytale</button>
+            <button type="button" id="hytale-cancel" hidden>Cancel</button>
+            <button type="button" id="hytale-signout" hidden>Sign out</button>
+          </div>
+        </div>
         <label id="add-memory-label" hidden>Memory
           <select id="add-memory">
             <option value="1024">1 GB: a couple of players</option>
@@ -163,7 +177,7 @@
         <p class="muted small" id="add-kid-note" hidden>You'll take care of this server: turn it on and off, let friends in, change settings, back it up and restore it. Only the owner can delete it.</p>
         <label class="check">
           <input id="add-eula" type="checkbox" required>
-          <span>I accept the <a href="https://www.minecraft.net/eula" target="_blank" rel="noopener">Minecraft EULA</a>. <span id="add-source">The server is downloaded from Mojang.</span></span>
+          <span>I accept the <a id="add-eula-link" href="https://www.minecraft.net/eula" target="_blank" rel="noopener"><span id="add-eula-name">Minecraft EULA</span></a>. <span id="add-source">The server is downloaded from Mojang.</span></span>
         </label>
         <div class="row">
           <button type="submit" class="primary">Create and start</button>
@@ -639,8 +653,8 @@
         </form>
 
         <details id="raw-box" class="card">
-          <summary>Advanced: edit server.properties directly</summary>
-          <p class="muted small">For settings that aren't above. The port and LAN settings are put back as the panel needs them. Changes apply after a restart.</p>
+          <summary>Advanced: edit <span id="raw-file">server.properties</span> directly</summary>
+          <p class="muted small" id="raw-help">For settings that aren't above. The port and LAN settings are put back as the panel needs them. Changes apply after a restart.</p>
           <textarea id="raw-text" spellcheck="false" rows="18" aria-label="server.properties"></textarea>
           <div class="row">
             <button id="raw-save" type="button" class="primary">Save file</button>

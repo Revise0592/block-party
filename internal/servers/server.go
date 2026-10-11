@@ -135,14 +135,17 @@ type Server struct {
 	javaSaved         chan struct{} // a Java server finished "save-all" during a backup
 	deleted           bool          // removed by DeleteServer; nothing more happens to it
 	startedAt         time.Time
-	autoUpdating      bool       // the update running was started overnight (for its notification)
-	backupFailNoted   bool       // a failed scheduled backup was notified; reset by a good one
-	lbTime, lbChecked time.Time  // cached newest backup time (see lastBackup)
-	pluginsMu         sync.Mutex // one console plugin install at a time
-	consolesLive      bool       // the running process was started with Geyser and Floodgate
-	updatedConsoles   bool       // the update running installed new console plugins (for its notification)
-	pluginsChanged    time.Time  // when a Java plugin was last added, updated, removed or turned on or off
-	jarSums           sync.Map   // plugin jar path -> jarSum (SHA-256 while unchanged)
+	autoUpdating      bool          // the update running was started overnight (for its notification)
+	backupFailNoted   bool          // a failed scheduled backup was notified; reset by a good one
+	lbTime, lbChecked time.Time     // cached newest backup time (see lastBackup)
+	pluginsMu         sync.Mutex    // one console plugin install at a time
+	consolesLive      bool          // the running process was started with Geyser and Floodgate
+	hytaleSess        hytaleSession // for the next start of a Hytale server
+	hytaleSessErr     error
+	hytaleSessAt      time.Time
+	updatedConsoles   bool      // the update running installed new console plugins (for its notification)
+	pluginsChanged    time.Time // when a Java plugin was last added, updated, removed or turned on or off
+	jarSums           sync.Map  // plugin jar path -> jarSum (SHA-256 while unchanged)
 }
 
 func newServer(m *Manager, meta Meta) *Server {
@@ -162,6 +165,9 @@ func (s *Server) displayName() string {
 
 func (s *Server) dir() string { return filepath.Join(s.m.serversDir(), s.meta.ID) }
 func (s *Server) binary() string {
+	if s.isHytale() {
+		return filepath.Join(s.dir(), hytaleJar)
+	}
 	if s.isJava() {
 		return filepath.Join(s.dir(), paperJar)
 	}
@@ -200,6 +206,15 @@ func (s *Server) Status() Status {
 		st.ConsolesUpdate = s.consolePluginsBehindLocked()
 		st.Consoles = s.consolesOnLocked()
 		st.ConsolesLive = st.Consoles && s.consolesLive && s.cmd != nil && s.state == StateRunning
+	}
+	if s.isHytale() {
+		st.MemoryMB = s.meta.MemoryMB
+		if st.MemoryMB == 0 {
+			st.MemoryMB = hytaleMemoryMB
+		}
+		if r := s.m.LatestHytale(); st.Version != "" && hytaleNewer(r.Version, st.Version) {
+			st.UpdateTo = r.Version
+		}
 	}
 	for _, p := range s.players {
 		st.Players = append(st.Players, p)
@@ -296,6 +311,12 @@ var (
 
 // onLineLocked handles one line of server output. Caller holds s.mu.
 func (s *Server) onLineLocked(line string) {
+	if s.isHytale() {
+		line = reANSI.ReplaceAllString(line, "")
+		s.addLineLocked(line)
+		s.onHytaleLineLocked(line)
+		return
+	}
 	if s.isJava() {
 		if s.onJavaSaveLineLocked(line) {
 			return
@@ -353,8 +374,19 @@ func (s *Server) Start() error {
 		return errShuttingDown
 	}
 	s.applyConsoleFileChanges()
+	serr := s.prepareHytaleStart()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if serr != nil && !errors.Is(serr, ErrHytaleSignIn) && s.cmd == nil && !s.busy && s.restart == nil {
+		// Hytale's sign-in service can't be reached (the network may still
+		// be coming up): keep trying, as after a crash.
+		s.waitForHytaleLocked(serr)
+		if !s.meta.AutoStart {
+			s.meta.AutoStart = true
+			s.saveMetaLater()
+		}
+		return nil
+	}
 	if s.busy {
 		return errBusy
 	}
@@ -393,7 +425,22 @@ func (s *Server) startLocked() error {
 		return s.failLocked(strings.TrimSpace(string(b)))
 	}
 	var cmd *exec.Cmd
-	if s.isJava() {
+	if s.isHytale() {
+		sess, serr := s.hytaleSess, s.hytaleSessErr
+		s.hytaleSess, s.hytaleSessErr = hytaleSession{}, nil
+		if serr != nil {
+			return s.failLocked("Couldn't sign the server in to Hytale: " + serr.Error())
+		}
+		if sess.Session == "" {
+			return s.failLocked("The server has no Hytale session yet; press Start again.")
+		}
+		java, args, env, err := s.hytaleCommand(sess)
+		if err != nil {
+			return s.failLocked(err.Error())
+		}
+		cmd = exec.Command(java, args...)
+		cmd.Env = env
+	} else if s.isJava() {
 		if err := s.applyJavaProperties(false); err != nil {
 			s.addLineLocked("[Panel] Couldn't update server.properties: " + err.Error())
 		}
@@ -448,6 +495,9 @@ func (s *Server) startLocked() error {
 		s.playing = "Bedrock level"
 		if s.isJava() {
 			s.playing = javaWorldDefault
+		}
+		if s.isHytale() {
+			s.playing = hytaleWorldFolder
 		}
 	}
 	s.state, s.message = StateStarting, ""
@@ -551,16 +601,42 @@ func (s *Server) onExit(cmd *exec.Cmd, err error) {
 	s.state = StateStarting
 	s.message = "Restarting after a crash"
 	s.addLineLocked(fmt.Sprintf("[Panel] The server stopped unexpectedly (%s). Restarting in %s…", code, wait))
-	s.restart = time.AfterFunc(wait, func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		if s.restart == nil || s.cmd != nil || s.busy || s.m.ctx.Err() != nil {
-			return
-		}
-		s.restart = nil
-		_ = s.startLocked()
-	})
+	s.restart = time.AfterFunc(wait, s.crashRestart)
 }
+
+// crashRestart starts the server again after a crash. A Hytale server that
+// can't get a session (Hytale's services are down) tries again every minute.
+func (s *Server) crashRestart() {
+	err := s.prepareHytaleStart()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.restart == nil || s.cmd != nil || s.busy || s.m.ctx.Err() != nil {
+		return
+	}
+	if (err != nil && !errors.Is(err, ErrHytaleSignIn)) || (s.isHytale() && s.coldBackup) {
+		if err == nil {
+			err = errors.New("a backup is being made")
+		}
+		s.waitForHytaleLocked(err)
+		return
+	}
+	s.restart = nil
+	_ = s.startLocked()
+}
+
+// waitForHytaleLocked starts the server once a Hytale session can be had,
+// trying every hytaleRetryEvery. Caller holds s.mu.
+func (s *Server) waitForHytaleLocked(err error) {
+	s.state = StateStarting
+	s.message = "Starting (waiting for Hytale's sign-in service)"
+	s.addLineLocked("[Panel] Couldn't get a Hytale session (" + err.Error() + "); trying again in a minute.")
+	s.hytaleSessErr = nil
+	s.restart = time.AfterFunc(hytaleRetryEvery, s.crashRestart)
+}
+
+// hytaleRetryEvery is how often a Hytale server waiting for a session tries
+// again; tests shorten it.
+var hytaleRetryEvery = time.Minute
 
 // Stop asks the server to save and stop, and marks it to stay stopped after a
 // panel restart.
@@ -654,6 +730,15 @@ func (s *Server) stop(user bool) <-chan struct{} {
 
 // Restart stops the server if it's running, then starts it.
 func (s *Server) Restart() error {
+	if err := s.prepareHytaleRestart(); err != nil {
+		s.mu.Lock()
+		up := s.cmd != nil
+		s.mu.Unlock()
+		if up {
+			s.say(err.Error())
+			return err
+		}
+	}
 	if done := s.stop(true); done != nil {
 		<-done
 	}
@@ -702,11 +787,29 @@ func (s *Server) installAndStart(extra []string) {
 	s.state = StateStopped
 	s.mu.Unlock()
 	ops := extra
-	if owner := s.m.Settings().OwnerGamertag; owner != "" && !s.isJava() {
+	if owner := s.m.Settings().OwnerGamertag; owner != "" && s.isBedrock() {
 		ops = append([]string{owner}, extra...) // an Xbox gamertag
 	} else if owner != "" && s.ConsolesOn() && s.consolesInstalled() {
 		if _, javaName, err := consoleIDs(owner); err == nil {
 			ops = append(ops, javaName) // the owner on a console
+		}
+	}
+	if s.isHytale() {
+		// The owner's Hytale profile: on the allowlist (which is turned on)
+		// and an operator, as the server first starts.
+		a := s.m.HytaleAccount()
+		uuid := s.m.hytaleOwnerUUID()
+		if a.Username != "" && uuid != "" {
+			s.mu.Lock()
+			if s.meta.HytaleNames == nil {
+				s.meta.HytaleNames = map[string]string{}
+			}
+			s.meta.HytaleNames[strings.ToLower(uuid)] = a.Username
+			s.mu.Unlock()
+			ops = []string{a.Username}
+		}
+		if err := s.SetAllowlistEnabled(true); err != nil {
+			s.say("Couldn't turn the allowlist on: " + err.Error())
 		}
 	}
 	for i, name := range ops {
@@ -770,6 +873,9 @@ func (s *Server) startUpdate(auto bool) error {
 		switch {
 		case errors.As(err, &partial):
 			msg := "Update failed partway: " + partial.Error() + " Restore the backup " + partial.backup + " before starting the server."
+			if partial.hint != "" {
+				msg = "Update failed partway: " + partial.Error() + " " + partial.hint
+			}
 			_ = os.WriteFile(s.incompleteMarker(), []byte(msg+"\n"), 0o644)
 			s.failLocked(msg)
 			if s.autoUpdating {
@@ -790,6 +896,9 @@ func (s *Server) startUpdate(auto bool) error {
 			s.notice = ""
 			if s.autoUpdating {
 				what := "Bedrock " + s.meta.Version
+				if s.isHytale() {
+					what = "Hytale " + s.meta.Version
+				}
 				if s.isJava() {
 					what = fmt.Sprintf("Minecraft Java %s (Paper build %d)", s.meta.Version, s.meta.Build)
 				}
@@ -819,6 +928,7 @@ func (s *Server) startUpdate(auto bool) error {
 type partialUpdateError struct {
 	err    error
 	backup string
+	hint   string // what to do instead of restoring the backup
 }
 
 func (e *partialUpdateError) Error() string { return e.err.Error() }
@@ -828,7 +938,18 @@ func (s *Server) update() error {
 	backupPath := ""
 	if _, err := os.Stat(s.binary()); err == nil {
 		s.say("Backing up before the update…")
-		path, err := backup(s.m.ctx, s.dir(), s.m.backupsDir(s.meta.ID), s.meta.ID, "before-update", updateBackups)
+		var path string
+		var err error
+		if s.isHytale() {
+			// Hytale's server is a few GB, and is downloaded again anyway:
+			// the backup holds the worlds and settings.
+			path, err = writeWorldBackup(s.m.ctx, s.dir(), s.m.backupsDir(s.meta.ID), s.meta.ID, "before-update")
+			if err == nil {
+				pruneBackups(s.m.backupsDir(s.meta.ID), s.meta.ID, "before-update", updateBackups)
+			}
+		} else {
+			path, err = backup(s.m.ctx, s.dir(), s.m.backupsDir(s.meta.ID), s.meta.ID, "before-update", updateBackups)
+		}
 		if err != nil {
 			return fmt.Errorf("backup failed, so nothing was changed: %w", err)
 		}
@@ -847,6 +968,9 @@ func (s *Server) update() error {
 // install downloads the current version into the server folder. On an
 // update, settings, the allowlist, permissions and worlds are kept.
 func (s *Server) install(update bool) error {
+	if s.isHytale() {
+		return s.installHytale(update)
+	}
 	if s.isJava() {
 		return s.installJava(update)
 	}
@@ -916,6 +1040,9 @@ func (s *Server) install(update bool) error {
 // applyOwnProperties sets the settings the panel manages, for the server's
 // edition. Caller holds s.mu.
 func (s *Server) applyOwnProperties() error {
+	if s.isHytale() {
+		return nil // its port is given on the command line
+	}
 	if s.isJava() {
 		return s.applyJavaProperties(false)
 	}

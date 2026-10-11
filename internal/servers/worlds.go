@@ -40,7 +40,7 @@ type WorldsView struct {
 
 // Worlds lists the server's worlds.
 func (s *Server) Worlds() (WorldsView, error) {
-	if s.isJava() {
+	if !s.isBedrock() {
 		return WorldsView{}, errJavaAddons
 	}
 	s.filesMu.Lock()
@@ -165,7 +165,7 @@ type UploadResult struct {
 // AddWorld adds the uploaded .mcworld as a new world. With play, the server
 // switches to it (restarting if it's running).
 func (s *Server) AddWorld(ctx context.Context, upload, fileName string, play bool) (UploadResult, error) {
-	if s.isJava() {
+	if !s.isBedrock() {
 		return UploadResult{}, errJavaAddons
 	}
 	if err := s.EditBlocked(); err != nil {
@@ -220,7 +220,7 @@ func (s *Server) AddWorld(ctx context.Context, upload, fileName string, play boo
 // PlayWorld makes the server play another of its worlds, restarting it if
 // it's running (it returns once the server has stopped and is starting).
 func (s *Server) PlayWorld(folder string) error {
-	if s.isJava() {
+	if !s.isBedrock() {
 		return errJavaAddons
 	}
 	if _, err := s.worldFolder(folder); err != nil {
@@ -247,7 +247,7 @@ func (s *Server) PlayWorld(folder string) error {
 // that world is made first ("Before deleting a world" in Backups); restoring
 // it puts the world back without changing anything else.
 func (s *Server) DeleteWorld(folder string) error {
-	if s.isJava() {
+	if !s.isBedrock() {
 		return errJavaAddons
 	}
 	if err := s.EditBlocked(); err != nil {
@@ -368,7 +368,7 @@ func (s *Server) restoreDeletedWorld(archive *os.File) error {
 // that the game opens). A running server keeps running: its saving is paused
 // while the world is copied, the same as for a backup.
 func (s *Server) ExportWorld(ctx context.Context, folder string, w io.Writer) error {
-	if s.isJava() {
+	if !s.isBedrock() {
 		return errJavaAddons
 	}
 	if _, err := s.worldFolder(folder); err != nil {

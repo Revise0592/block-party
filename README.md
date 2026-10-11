@@ -98,7 +98,7 @@ Switch players can join without extra apps.
 
 ## Coming next
 
-Hytale.
+Release 1.0 on Unraid's Community Apps.
 
 ## Install
 
@@ -282,6 +282,36 @@ speaks). Turn it off per server under **Settings → Console players**.
 - Bedrock updates often and consoles update themselves, so Geyser has to
   keep up: a new Geyser version shows as an update ready, and overnight
   updates install it (even on a server whose Minecraft version is held).
+
+### Hytale servers
+
+**Add server → Hytale** sets up a Hytale dedicated server. Hytale's server
+is only downloaded with a Hytale account that owns the game, so the owner
+signs the panel in to Hytale once, right on the Add server page: open
+Hytale's sign-in page and enter the code the panel shows, twice (one code
+lets the panel download the server, the other lets servers sign in so
+players can join). The sign-in is kept fresh by the panel, and each Hytale
+server gets its own session when it starts. **Sign out** is on the same
+page.
+
+- The server (a few GB) is downloaded from Hytale and checked against its
+  checksum; Java 25 is downloaded once from adoptium.net.
+- Players join with Hytale's **Add Server** and the address and port (UDP;
+  the same open-to-friends switch forwards it).
+- New Hytale servers have the allowlist on, with the owner on it and an
+  operator. Add players by Hytale username on the **Players** tab: by
+  command while it runs, or in the files while it's stopped for players
+  it has seen (others are added when it next starts).
+- **Settings** edits Hytale's `config.json` (name, message, password, max
+  players, game mode, view distance). Hytale writes that file while it
+  runs, so change settings while it's stopped.
+- 4 GB of memory by default (Settings tab). Backups hold `universe/`, mods
+  and settings; a backup while it runs asks Hytale to save first.
+- **Update** and overnight updates install new Hytale releases; the backup
+  made first holds the worlds (the server itself is downloaded again).
+
+Hytale support is new: kicking players, messages and mods aren't in the
+panel yet (the Console tab works for anything).
 
 ### Notifications
 

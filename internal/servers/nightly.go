@@ -118,7 +118,7 @@ func (s *Server) nightly(now time.Time, plan Nightly, latest string) {
 	skip := s.deleted || s.meta.LastNightly == night || s.busy || s.backupActive || s.coldBackup ||
 		len(s.players) > 0 || s.state == StateImporting || s.state == StateRestoring || s.state == StateError
 	version, preview, hold := s.meta.Version, s.meta.Preview, s.meta.HoldVersion
-	java, build := s.isJava(), s.meta.Build
+	java, build, hytale := s.isJava(), s.meta.Build, s.isHytale()
 	consolesBehind := s.consolePluginsBehindLocked()
 	running := s.cmd != nil && s.state == StateRunning
 	upFor := time.Since(s.startedAt)
@@ -133,6 +133,11 @@ func (s *Server) nightly(now time.Time, plan Nightly, latest string) {
 		known, behind = r.Version != "", javaNewer(r, version, build)
 		latest = r.label()
 	}
+	if hytale {
+		r := s.m.LatestHytale()
+		known, behind = r.Version != "", hytaleNewer(r.Version, version)
+		latest = r.Version
+	}
 	if plan.AutoUpdate && !known {
 		return // the newest version isn't known yet: don't restart instead of updating
 	}
@@ -142,6 +147,9 @@ func (s *Server) nightly(now time.Time, plan Nightly, latest string) {
 		what := "Bedrock " + latest
 		if java {
 			what = "Minecraft Java " + latest
+		}
+		if hytale {
+			what = "Hytale " + latest
 		}
 		s.say(fmt.Sprintf("Updating to %s overnight (nobody is playing).", what))
 		if err := s.UpdateOvernight(); err != nil {
