@@ -25,7 +25,7 @@ async function api(path, options = {}) {
   });
   let body = null;
   try { body = await res.json(); } catch (_) { /* empty */ }
-  if (res.status === 401 && !["/api/auth/state", "/api/auth/login", "/api/auth/setup", "/api/auth/reset", "/api/auth/password"].includes(path)) {
+  if (res.status === 401 && !["/api/auth/state", "/api/auth/login", "/api/auth/login/code", "/api/auth/setup", "/api/auth/reset", "/api/auth/password"].includes(path)) {
     signedOut(); // the session ended (signed out elsewhere, or expired)
   }
   if (!res.ok) throw new Error((body && body.error) || res.statusText);
@@ -458,6 +458,8 @@ function route() {
     $("add-name").focus();
   }
   if (next === "people") loadPeople();
+  if (next === "account") loadTwo();
+  else if ($("two-codes-list").textContent) { $("two-codes-list").textContent = ""; $("two-codes").hidden = true; $("two-actions").hidden = false; }
   if (next === "outside") loadOutside(false);
   if (next === "upkeep") loadUpkeep();
   if (next === "notify") loadNotify();
@@ -2285,7 +2287,12 @@ function renderPeople() {
       el("div", { class: "person-head" },
         el("span", { class: "avatar" }, u.username.slice(0, 1).toUpperCase()),
         el("div", { class: "grow" }, el("h2", {}, u.username),
-          el("small", {}, u.lastSeen ? `Last used the panel ${whenShort(u.lastSeen).toLowerCase()}` : "Hasn't signed in yet")),
+          el("small", {}, (u.lastSeen ? `Last used the panel ${whenShort(u.lastSeen).toLowerCase()}` : "Hasn't signed in yet") + (u.twoFactor ? " · two-factor on" : ""))),
+        u.twoFactor ? btn("Turn off two-factor", async () => {
+          if (!confirm(`Turn off two-factor sign-in for ${u.username}? Do this if they lost their phone and recovery codes. They're signed out, and can turn it on again.`)) return;
+          try { await post(`/api/users/${encodeURIComponent(u.username)}/2fa/reset`); showPeopleError(null); } catch (err) { showPeopleError(err); }
+          loadPeople();
+        }) : null,
         btn("New password", async () => {
           const pw = prompt(`New password for ${u.username} (at least 8 characters). They'll be signed out everywhere.`);
           if (!pw) return;
@@ -2316,13 +2323,90 @@ $("person-form").addEventListener("submit", async (ev) => {
   } catch (err) { formError("person-error", err); }
 });
 
+// ---- two-factor sign-in (account page) ----
+
+function showTwoError(err) {
+  $("two-error").textContent = err ? err.message : "";
+  $("two-error").hidden = !err;
+}
+
+function renderTwo(v) {
+  $("two-status").textContent = v.on
+    ? `On: signing in asks for a code from your authenticator app after your password. ${v.recoveryLeft} recovery code${v.recoveryLeft === 1 ? "" : "s"} left.`
+    : "Off. With it on, someone who learns your password still can't sign in without your phone. Worth it if the panel is reachable from outside your home.";
+  $("two-start").hidden = v.on;
+  $("two-new-codes").hidden = !v.on;
+  $("two-off").hidden = !v.on;
+  $("two-setup").hidden = true;
+}
+
+async function loadTwo() {
+  try { renderTwo(await api("/api/auth/2fa")); showTwoError(null); } catch (err) { showTwoError(err); }
+}
+
+function showCodes(codes) {
+  $("two-codes-list").textContent = codes.join("\n");
+  $("two-codes").hidden = false;
+  $("two-actions").hidden = true;
+}
+
+$("two-start").addEventListener("click", async () => {
+  const password = prompt("Your password, to turn on two-factor sign-in:");
+  if (!password) return;
+  try {
+    const r = await post("/api/auth/2fa/start", { password });
+    $("two-qr").src = "data:image/svg+xml;base64," + btoa(r.qr);
+    $("two-secret").textContent = r.secret;
+    $("two-setup").hidden = false;
+    $("two-start").hidden = true;
+    $("two-code").value = "";
+    $("two-code").focus();
+    showTwoError(null);
+  } catch (err) { showTwoError(err); }
+});
+// Recovery codes may have been used elsewhere since the page was opened.
+document.addEventListener("visibilitychange", () => {
+  if (signedIn && view === "account" && !document.hidden && $("two-setup").hidden && $("two-codes").hidden) loadTwo();
+});
+$("two-cancel").addEventListener("click", () => { $("two-qr").removeAttribute("src"); loadTwo(); });
+$("two-confirm-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  try {
+    const r = await post("/api/auth/2fa/confirm", { code: $("two-code").value });
+    $("two-qr").removeAttribute("src");
+    $("two-secret").textContent = "";
+    renderTwo(r.status);
+    showCodes(r.recoveryCodes);
+    showTwoError(null);
+  } catch (err) { showTwoError(err); $("two-code").value = ""; }
+});
+$("two-new-codes").addEventListener("click", async () => {
+  const password = prompt("Your password, to make new recovery codes (the old ones stop working):");
+  if (!password) return;
+  try { const r = await post("/api/auth/2fa/recovery", { password }); renderTwo(r.status); showCodes(r.recoveryCodes); showTwoError(null); } catch (err) { showTwoError(err); }
+});
+$("two-off").addEventListener("click", async () => {
+  const password = prompt("Your password, to turn two-factor sign-in off:");
+  if (!password) return;
+  try { renderTwo(await post("/api/auth/2fa/disable", { password })); showTwoError(null); } catch (err) { showTwoError(err); }
+});
+$("two-codes-copy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("two-codes-list").textContent); $("two-codes-copy").textContent = "Copied"; } catch (_) { /* select by hand */ }
+});
+$("two-codes-done").addEventListener("click", () => {
+  $("two-codes-list").textContent = "";
+  $("two-codes").hidden = true;
+  $("two-actions").hidden = false;
+  $("two-codes-copy").textContent = "Copy";
+});
+
 // ---- signing in ----
 
 let signedIn = false;
 let timers = [];
 
 function showOnly(formId) {
-  for (const id of ["setup-form", "login-form", "reset-form"]) $(id).hidden = id !== formId;
+  for (const id of ["setup-form", "login-form", "reset-form", "code-form"]) $(id).hidden = id !== formId;
   const first = $(formId).querySelector("input");
   if (first) first.focus();
 }
@@ -2464,6 +2548,13 @@ for (const r of document.querySelectorAll("input[name=style], input[name=mode]")
 function signedOut() {
   if (!signedIn) return;
   signedIn = false;
+  // Nothing of the two-factor setup stays on screen.
+  $("two-codes-list").textContent = "";
+  $("two-secret").textContent = "";
+  $("two-qr").removeAttribute("src");
+  $("two-setup").hidden = true;
+  $("two-codes").hidden = true;
+  loginChallenge = null;
   timers.forEach(clearInterval);
   timers = [];
   closeConsole();
@@ -2516,18 +2607,43 @@ $("setup-form").addEventListener("submit", async (ev) => {
   } catch (err) { formError("setup-error", err); }
 });
 
+let loginChallenge = null;
+
 $("login-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   try {
-    await post("/api/auth/login", { username: $("login-user").value, password: $("login-pass").value });
+    const res = await post("/api/auth/login", { username: $("login-user").value, password: $("login-pass").value });
     $("login-pass").value = "";
     formError("login-error", null);
+    if (res && res.needCode) {
+      loginChallenge = res.challenge;
+      $("code-input").value = "";
+      formError("code-error", null);
+      showOnly("code-form");
+      return;
+    }
     start();
   } catch (err) {
     $("login-pass").value = "";
     formError("login-error", err);
   }
 });
+
+$("code-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  try {
+    await post("/api/auth/login/code", { challenge: loginChallenge, code: $("code-input").value });
+    loginChallenge = null;
+    $("code-input").value = "";
+    formError("code-error", null);
+    start();
+  } catch (err) {
+    $("code-input").value = "";
+    formError("code-error", err);
+    if (/password again|sign in again|too many/i.test(err.message)) setTimeout(() => showOnly("login-form"), 1500);
+  }
+});
+$("code-back").addEventListener("click", (ev) => { ev.preventDefault(); loginChallenge = null; showOnly("login-form"); });
 
 $("forgot-link").addEventListener("click", (ev) => { ev.preventDefault(); showOnly("reset-form"); });
 $("reset-back").addEventListener("click", () => showOnly("login-form"));

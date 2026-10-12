@@ -198,7 +198,7 @@ func (s *Server) cookieName() string {
 
 // publicAPI can be used without signing in.
 var publicAPI = map[string]bool{
-	"/api/auth/state": true, "/api/auth/setup": true, "/api/auth/login": true, "/api/auth/reset": true,
+	"/api/auth/state": true, "/api/auth/setup": true, "/api/auth/login": true, "/api/auth/login/code": true, "/api/auth/reset": true,
 }
 
 // secure checks the session and blocks cross-site requests.

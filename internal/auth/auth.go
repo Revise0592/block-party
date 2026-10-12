@@ -105,6 +105,8 @@ type Account struct {
 	// and their role on each server they can see (server ID -> role).
 	CanAdd bool              `json:"canAdd,omitempty"`
 	Grants map[string]string `json:"grants,omitempty"`
+	// Two is two-factor sign-in (an authenticator app), if it's on.
+	Two *TwoFactor `json:"twoFactor,omitempty"`
 }
 
 type session struct {
@@ -132,7 +134,10 @@ type Store struct {
 	owner      *Account
 	users      map[string]*Account // everyone else, by lower-case name
 	sessions   map[string]*session
-	fails      map[string]*failures // by address
+	fails      map[string]*failures   // by address
+	challenges map[string]*challenge  // sign-ins waiting for their code, by token hash
+	pending    map[string]*pendingTwo // two-factor setups waiting for a first code, by lower-case name
+	twoFails   map[string][]time.Time // wrong codes, by lower-case name
 	hashSem    chan struct{}
 
 	now func() time.Time
@@ -144,6 +149,7 @@ func Open(dir, legacyCode string) (*Store, error) {
 	s := &Store{
 		dir: dir, legacyCode: strings.TrimSpace(legacyCode),
 		users: map[string]*Account{}, sessions: map[string]*session{}, fails: map[string]*failures{},
+		challenges: map[string]*challenge{}, pending: map[string]*pendingTwo{}, twoFails: map[string][]time.Time{},
 		hashSem: make(chan struct{}, 2), // Argon2 uses 64 MB each
 		now:     time.Now,
 	}
@@ -404,6 +410,16 @@ func (s *Store) Login(ctx context.Context, ip, username, password string) (strin
 	if !s.samePasswordLocked(acct) {
 		return "", ErrChanged // reset, changed or removed while this was checked
 	}
+	if acct = s.accountLocked(acct.Username); acct.Two != nil {
+		if wait := s.twoLockedLocked(acct.Username); wait > 0 {
+			return "", &LockedError{Wait: wait}
+		}
+		tok, err := s.newChallengeLocked(acct)
+		if err != nil {
+			return "", err
+		}
+		return "", &NeedCodeError{Challenge: tok}
+	}
 	return s.newSessionLocked(acct.Username)
 }
 
@@ -441,6 +457,7 @@ func (s *Store) Reset(ctx context.Context, ip, code, password string) (string, e
 	}
 	acct := s.owner.clone()
 	acct.Hash, acct.PasswordChanged = hash, s.now().UTC()
+	acct.Two = nil // a reset needs the server itself, so it also turns two-factor off
 	if err := s.commitLocked(acct, s.users); err != nil {
 		return "", err
 	}
@@ -687,6 +704,8 @@ type User struct {
 	Grants   map[string]string `json:"grants"`
 	Created  time.Time         `json:"created"`
 	LastSeen *time.Time        `json:"lastSeen,omitempty"`
+	// TwoFactor: they sign in with a code from an authenticator app too.
+	TwoFactor bool `json:"twoFactor,omitempty"`
 }
 
 // Users lists the accounts other than the owner, by name.
@@ -702,7 +721,7 @@ func (s *Store) Users() []User {
 	}
 	out := []User{}
 	for k, a := range s.users {
-		u := User{Username: a.Username, CanAdd: a.CanAdd, Grants: map[string]string{}, Created: a.Created}
+		u := User{Username: a.Username, CanAdd: a.CanAdd, Grants: map[string]string{}, Created: a.Created, TwoFactor: a.Two != nil}
 		for id, r := range a.Grants {
 			u.Grants[id] = r
 		}
@@ -885,6 +904,7 @@ func (s *Store) sessionAccountLocked(token string) *Account {
 
 func (a *Account) clone() *Account {
 	c := *a
+	c.Two = a.cloneTwo()
 	c.Grants = map[string]string{}
 	for k, v := range a.Grants {
 		c.Grants[k] = v

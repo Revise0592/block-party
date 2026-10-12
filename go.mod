@@ -9,6 +9,7 @@ require (
 	github.com/pion/ice/v4 v4.2.7
 	github.com/pion/webrtc/v4 v4.2.16-0.20260627075746-7a223a6f4d4f
 	github.com/sandertv/gophertunnel v1.62.0
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 )
 
 require (

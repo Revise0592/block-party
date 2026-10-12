@@ -46,6 +46,17 @@
     <p class="small"><a href="#" id="forgot-link">Forgot your password?</a></p>
   </form>
 
+  <form id="code-form" class="card" hidden>
+    <h2>Enter your code</h2>
+    <p class="muted small">Open your authenticator app and type the 6-digit code for Blockheads. Lost your phone? Type one of your recovery codes instead.</p>
+    <label>Code
+      <input id="code-input" inputmode="text" autocomplete="one-time-code" maxlength="16" autocapitalize="off" spellcheck="false" required>
+    </label>
+    <button type="submit" class="primary">Sign in</button>
+    <p id="code-error" class="error" hidden></p>
+    <p class="small"><a href="#" id="code-back">Back</a></p>
+  </form>
+
   <form id="reset-form" class="card" hidden>
     <h2>Set a new password</h2>
     <p class="muted small">This is for the panel's owner. Anyone else: ask the owner, who can give you a new password on the People page.</p>
@@ -493,6 +504,32 @@
         <h2>People</h2>
         <p class="muted small">Give your kids their own sign-in, and choose what each one can do on each server.</p>
         <a class="button" href="#/people">Open People</a>
+      </section>
+
+      <section class="card" id="two-card">
+        <h2>Two-factor sign-in</h2>
+        <p class="muted small" id="two-status">…</p>
+        <div id="two-setup" hidden>
+          <p class="small">Open an authenticator app on your phone (Google Authenticator, Microsoft Authenticator, Authy, 1Password and others work), add an account by scanning this, then type the code it shows.</p>
+          <img id="two-qr" class="qr" alt="QR code for your authenticator app">
+          <p class="muted small">Can't scan? Type this key instead: <span id="two-secret" class="mono"></span></p>
+          <form id="two-confirm-form" class="row">
+            <input id="two-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="6-digit code from the app" aria-label="Code from the app" required>
+            <button type="submit" class="primary">Turn on</button>
+            <button type="button" id="two-cancel">Cancel</button>
+          </form>
+        </div>
+        <div id="two-codes" class="notice-box" hidden>
+          <p class="small"><b>Your recovery codes.</b> Each one signs you in once if you lose your phone. Save them somewhere safe (a password manager, or printed); they're not shown again.</p>
+          <pre id="two-codes-list" class="mono codes"></pre>
+          <div class="row"><button type="button" id="two-codes-copy">Copy</button><button type="button" id="two-codes-done" class="primary">I've saved them</button></div>
+        </div>
+        <div class="row" id="two-actions">
+          <button type="button" id="two-start" class="primary" hidden>Turn on</button>
+          <button type="button" id="two-new-codes" hidden>New recovery codes</button>
+          <button type="button" id="two-off" class="danger" hidden>Turn off</button>
+        </div>
+        <p id="two-error" class="error" hidden></p>
       </section>
 
       <section class="card">

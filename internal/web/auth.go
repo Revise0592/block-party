@@ -15,6 +15,13 @@ func (s *Server) authRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/auth/state", s.authState)
 	mux.HandleFunc("POST /api/auth/setup", s.authSetup)
 	mux.HandleFunc("POST /api/auth/login", s.authLogin)
+	mux.HandleFunc("POST /api/auth/login/code", s.authLoginCode)
+	mux.HandleFunc("GET /api/auth/2fa", s.twoStatus)
+	mux.HandleFunc("POST /api/auth/2fa/start", s.twoStart)
+	mux.HandleFunc("POST /api/auth/2fa/confirm", s.twoConfirm)
+	mux.HandleFunc("POST /api/auth/2fa/disable", s.twoDisable)
+	mux.HandleFunc("POST /api/auth/2fa/recovery", s.twoRecovery)
+	mux.HandleFunc("POST /api/users/{name}/2fa/reset", ownerOnly(s.twoResetUser))
 	mux.HandleFunc("POST /api/auth/reset", s.authReset)
 	mux.HandleFunc("POST /api/auth/logout", s.authLogout)
 	mux.HandleFunc("POST /api/auth/logout-all", s.authLogoutAll)
@@ -115,6 +122,12 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token, err := s.auth.Login(r.Context(), clientIP(r), req.Username, req.Password)
+	var need *auth.NeedCodeError
+	if errors.As(err, &need) {
+		// The password was right; the code from their app comes next.
+		writeJSON(w, http.StatusOK, map[string]any{"needCode": true, "challenge": need.Challenge})
+		return
+	}
 	if err != nil {
 		// Only name real accounts: a password typed into the username box
 		// shouldn't end up in the log.

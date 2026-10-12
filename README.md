@@ -44,7 +44,8 @@ Switch players can join without extra apps.
   [Moving from Crafty](#moving-from-crafty).
 - **Owner account** with a sign-in page, a setup guide the first time, and
   a password reset from the command line. Passwords are hashed with Argon2id;
-  repeated wrong passwords lock that address out for 15 minutes.
+  repeated wrong passwords lock that address out for 15 minutes. Optional
+  [two-factor sign-in](#two-factor-sign-in) with an authenticator app.
 - **Friends outside the house.** Open a server to friends who don't live
   there: the panel finds your internet address, opens the router's ports with
   UPnP (or lists the forwards to add by hand), and writes an invite that tells
@@ -141,7 +142,29 @@ after you last used it.
 
 **Forgot the password?** Run `docker exec blockheads blockheads reset-password`
 and choose "Forgot your password?" on the sign-in page. The code works once,
-for an hour, and signs out every browser.
+for an hour, and signs out every browser. It also turns off two-factor sign-in,
+since someone who can run commands on the server already controls it.
+
+### Two-factor sign-in
+
+On **Account → Two-factor sign-in**, choose **Turn on** (it asks for your
+password), scan the QR code with
+an authenticator app (Google Authenticator, Microsoft Authenticator, Authy,
+1Password and others), and type the 6-digit code it shows. After that, signing
+in asks for a code from the app after the password. Every other browser is
+signed out when you turn it on.
+
+You get 10 recovery codes. Each one signs you in once if you lose your phone;
+save them somewhere safe, because they're only shown once. **New recovery
+codes** replaces them all, and **Turn off** removes two-factor sign-in; both
+ask for your password. To move it to a new phone, turn it off and on again.
+
+Each code works once, and a phone clock a little off is fine. Ten wrong codes
+in 15 minutes lock the account (from every address) until they're 15 minutes
+old. Kids can
+turn it on for their own sign-in too; if one loses their phone, the owner can
+turn it off for them from **People**. If the owner loses both the phone and the
+recovery codes, the password reset above turns it off.
 
 `--stop-timeout 60` gives game servers time to save their worlds when the
 container stops.

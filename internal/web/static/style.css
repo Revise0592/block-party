@@ -571,3 +571,6 @@ fieldset.edition legend { font-weight: 600; font-size: 14px; margin-bottom: 6px;
 .notice-box { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 4px 0 12px; }
 .notice-box p { margin: 0 0 8px; }
 .code-big { font-size: 28px; font-weight: 700; letter-spacing: 3px; margin: 6px 0 8px; }
+
+.qr { width: 200px; height: 200px; image-rendering: pixelated; border-radius: 8px; border: 1px solid var(--line); background: #fff; padding: 8px; display: block; margin: 8px 0; }
+pre.codes { columns: 2; font-size: 15px; line-height: 1.8; padding: 8px 12px; background: var(--bg); border-radius: 8px; user-select: all; }
