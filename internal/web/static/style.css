@@ -146,8 +146,20 @@ html[data-mode="light"] .wm-a { fill: #2ba595; } html[data-mode="light"] .wm-a2 
 .nav.account { border: 1px solid var(--line); min-height: 48px; padding: 0 10px; }
 .avatar { width: 28px; height: 28px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 22%, var(--panel)); color: var(--ok); display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; flex: none; }
 .content { flex: 1; min-width: 0; padding: 30px 40px 48px; }
-.view { max-width: 1120px; }
-.view.narrow { max-width: 720px; }
+/* Pages use the window's width (up to 1920px, then centred);
+   forms that read best narrow stay narrow and centred. */
+.view { max-width: 1920px; margin: 0 auto; }
+.view.narrow { max-width: 860px; }
+/* On wide screens, pages of separate cards flow into two columns, and so do
+   a server's settings groups. Headings and notes stay full width. */
+@media (min-width: 1400px) {
+  .view.flow { max-width: 1920px; columns: 2; column-gap: 16px; }
+  .view.flow > * { break-inside: avoid; }
+  .view.flow > :not(.card) { column-span: all; }
+  .view.flow > .card { display: block; width: 100%; margin-top: 0; margin-bottom: 14px; }
+  #settings-groups { columns: 2; column-gap: 16px; }
+  #settings-groups > * { break-inside: avoid; display: block; width: 100%; margin-top: 0; margin-bottom: 14px; }
+}
 .tabbar { display: none; }
 
 .page-head { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
@@ -443,7 +455,7 @@ html[data-style="treehouse"] .people button, html[data-style="treehouse"] .peopl
   html[data-style="treehouse"] .nav.account { border: 2px solid var(--line); padding: 0 14px 0 6px; }
   html[data-style="treehouse"] .nav.account svg { display: none; }
   html[data-style="treehouse"] .content { padding: 30px 40px 48px; }
-  html[data-style="treehouse"] .view { margin: 0 auto; max-width: 1200px; }
+  html[data-style="treehouse"] .view { margin: 0 auto; max-width: 1920px; }
   html[data-style="treehouse"] .view.narrow { max-width: 760px; }
 }
 html[data-style="treehouse"] .avatar { width: 32px; height: 32px; background: #ffe8a3; color: #7a4b00; font-weight: 700; }
