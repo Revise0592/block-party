@@ -1,6 +1,6 @@
-# Blockheads Control Panel: Product Design
+# Block Party: Product Design
 
-A free, open-source, all-in-one panel for hosting Minecraft (Bedrock and Java), Hytale and similar game servers at home, with console joining, DNS, users and backups built in. Name: Blockheads Control Panel.
+A free, open-source, all-in-one panel for hosting Minecraft (Bedrock and Java), Hytale and similar game servers at home, with console joining, DNS, users and backups built in. Name: Block Party.
 
 ## What it is
 
@@ -233,7 +233,7 @@ Also learned: after changing a console's DNS, restart the console, or it keeps u
 
 **Decisions**
 
-- [x] Project name: Blockheads Control Panel.
+- [x] Project name: Block Party.
 - [x] Language: Go (with a Svelte web front end).
 - [x] License: GPL-3.0.
 - [x] Importing existing Crafty servers is part of phase 1.

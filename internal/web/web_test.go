@@ -11,8 +11,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ScottSchneck/blockheads-control-panel/internal/auth"
-	"github.com/ScottSchneck/blockheads-control-panel/internal/servers"
+	"github.com/ScottSchneck/block-party/internal/auth"
+	"github.com/ScottSchneck/block-party/internal/servers"
 )
 
 const testPassword = "correct horse battery"
@@ -70,7 +70,7 @@ func TestSignInAndCrossSiteProtection(t *testing.T) {
 			signIn(r, s)
 		}
 		if header {
-			r.Header.Set("X-Blockheads", "1")
+			r.Header.Set("X-Block-Party", "1")
 		}
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
@@ -156,7 +156,7 @@ func TestImportListWithoutFolder(t *testing.T) {
 	}
 	r = httptest.NewRequest("POST", "/api/import", strings.NewReader(`{"path":"a","name":"A"}`))
 	signIn(r, s)
-	r.Header.Set("X-Blockheads", "1")
+	r.Header.Set("X-Block-Party", "1")
 	w = httptest.NewRecorder()
 	s.routes().ServeHTTP(w, r)
 	if w.Code != http.StatusBadRequest {
@@ -176,7 +176,7 @@ func TestBackupRoutes(t *testing.T) {
 	do := func(method, path, body string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, path, strings.NewReader(body))
 		signIn(r, s)
-		r.Header.Set("X-Blockheads", "1")
+		r.Header.Set("X-Block-Party", "1")
 		w := httptest.NewRecorder()
 		s.routes().ServeHTTP(w, r)
 		return w
@@ -198,11 +198,11 @@ func TestBackupRoutes(t *testing.T) {
 	}
 }
 
-// call makes a request with the X-Blockheads header and the given cookies,
+// call makes a request with the X-Block-Party header and the given cookies,
 // returning the response.
 func call(h http.Handler, method, path, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, path, strings.NewReader(body))
-	r.Header.Set("X-Blockheads", "1")
+	r.Header.Set("X-Block-Party", "1")
 	r.RemoteAddr = "192.0.2.9:5555"
 	for _, c := range cookies {
 		r.AddCookie(c)
@@ -326,7 +326,7 @@ func TestLockoutAndReset(t *testing.T) {
 	}
 	// Still locked from this address, so use another one.
 	r := httptest.NewRequest("POST", "/api/auth/reset", strings.NewReader(`{"code":"`+code+`","password":"a new password"}`))
-	r.Header.Set("X-Blockheads", "1")
+	r.Header.Set("X-Block-Party", "1")
 	r.RemoteAddr = "192.0.2.50:1"
 	rw := httptest.NewRecorder()
 	h.ServeHTTP(rw, r)

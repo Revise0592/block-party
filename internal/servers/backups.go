@@ -1,7 +1,7 @@
 package servers
 
 import (
-	"github.com/ScottSchneck/blockheads-control-panel/internal/notify"
+	"github.com/ScottSchneck/block-party/internal/notify"
 
 	"archive/tar"
 	"compress/gzip"

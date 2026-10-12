@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ScottSchneck/blockheads-control-panel/internal/servers"
+	"github.com/ScottSchneck/block-party/internal/servers"
 )
 
 func (s *Server) settingsRoutes(mux *http.ServeMux) {

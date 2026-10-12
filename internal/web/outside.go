@@ -6,8 +6,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/ScottSchneck/blockheads-control-panel/internal/outside"
-	"github.com/ScottSchneck/blockheads-control-panel/internal/servers"
+	"github.com/ScottSchneck/block-party/internal/outside"
+	"github.com/ScottSchneck/block-party/internal/servers"
 )
 
 // Friends outside the house. The owner sets it up (the address friends use,

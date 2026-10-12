@@ -57,7 +57,7 @@ func (s *Server) isJava() bool { return s.meta.Type == TypeJava }
 
 // javaUserAgent identifies the panel to PaperMC, which asks for a contact.
 func (m *Manager) javaUserAgent() string {
-	return "BlockheadsControlPanel/" + m.opts.Version + " (https://github.com/ScottSchneck/blockheads-control-panel)"
+	return "BlockParty/" + m.opts.Version + " (https://github.com/ScottSchneck/block-party)"
 }
 
 func (m *Manager) getJSON(ctx context.Context, url string, v any) error {
@@ -428,7 +428,7 @@ func (s *Server) installJava(update bool) error {
 		return err
 	}
 	// The EULA was accepted when the server was added.
-	if err := os.WriteFile(filepath.Join(s.dir(), "eula.txt"), []byte("# Accepted in the Blockheads panel when the server was added.\neula=true\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(s.dir(), "eula.txt"), []byte("# Accepted in the Block Party panel when the server was added.\neula=true\n"), 0o644); err != nil {
 		return err
 	}
 	s.mu.Lock()

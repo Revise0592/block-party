@@ -314,7 +314,7 @@ func TestAddonRoutes(t *testing.T) {
 
 	upload := func(path, body string, c *http.Cookie) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("POST", path, strings.NewReader(body))
-		r.Header.Set("X-Blockheads", "1")
+		r.Header.Set("X-Block-Party", "1")
 		r.Header.Set("X-File-Name", "blocks.mcpack")
 		r.AddCookie(c)
 		w := httptest.NewRecorder()

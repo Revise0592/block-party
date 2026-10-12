@@ -76,7 +76,7 @@ func (s *Server) twoStart(w http.ResponseWriter, r *http.Request) {
 	if !readBody(w, r, &req) {
 		return
 	}
-	secret, link, err := s.auth.StartTwoFactor(r.Context(), clientIP(r), s.sessionToken(r), req.Password, "Blockheads")
+	secret, link, err := s.auth.StartTwoFactor(r.Context(), clientIP(r), s.sessionToken(r), req.Password, "Block Party")
 	if err != nil {
 		authError(w, err)
 		return

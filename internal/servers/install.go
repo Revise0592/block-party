@@ -83,7 +83,7 @@ func (m *Manager) latestBedrock(ctx context.Context, preview bool) (url, version
 
 func (m *Manager) userAgent() string {
 	// minecraft.net turns away some non-browser clients, so look like one.
-	return "Mozilla/5.0 (X11; Linux x86_64) BlockheadsControlPanel/" + m.opts.Version
+	return "Mozilla/5.0 (X11; Linux x86_64) BlockParty/" + m.opts.Version
 }
 
 func (m *Manager) http() *http.Client {

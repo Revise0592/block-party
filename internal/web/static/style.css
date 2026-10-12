@@ -1,4 +1,4 @@
-/* Blockheads Control Panel: "Control Room" style, light and dark.
+/* Block Party: "Control Room" style, light and dark.
    Colours are variables; html[data-mode] picks light, dark or auto
    (follow the device). */
 
@@ -127,7 +127,14 @@ code.block { display: block; margin: 8px 0; padding: 8px 10px; border-radius: 8p
 }
 .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 22px; color: var(--text); text-decoration: none; font-family: var(--display); font-weight: 600; font-size: 17px; }
 .brand:hover { color: var(--text); }
-.logo { width: 28px; height: 28px; fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linejoin: round; }
+.logo { width: 30px; height: 30px; flex: none; }
+/* The Block Party wordmark: light teal and orange, with a darker teal on light backgrounds. */
+.wordmark { display: block; height: 15px; width: auto; }
+.wm-a { fill: #7fdccf; } .wm-a2 { fill: #467972; } .wm-b { fill: #ff8a2b; } .wm-b2 { fill: #8c4c18; }
+html[data-mode="light"] .wm-a { fill: #2ba595; } html[data-mode="light"] .wm-a2 { fill: #185b52; }
+@media (prefers-color-scheme: light) {
+  html[data-mode="auto"] .wm-a { fill: #2ba595; } html[data-mode="auto"] .wm-a2 { fill: #185b52; }
+}
 .nav { display: flex; align-items: center; gap: 10px; padding: 0 12px; min-height: 42px; border-radius: 8px; color: var(--soft); text-decoration: none; font-size: 14px; }
 .nav svg, .tabbar svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; flex: none; }
 .nav:hover { color: var(--text); background: var(--panel-2); }
@@ -288,6 +295,8 @@ legend { font-size: 13px; font-weight: 600; color: var(--soft); margin-bottom: 1
 /* sign in */
 .auth { max-width: 420px; margin: 48px auto; padding: 0 16px; }
 .auth-brand { justify-content: center; font-size: 22px; padding-bottom: 20px; }
+.auth-brand .logo { width: 44px; height: 44px; }
+.auth-brand .wordmark { height: 22px; }
 .auth h2 { font-family: var(--display); font-size: 20px; }
 .auth input { width: 100%; font-size: 16px; } /* 16px stops phones zooming in */
 .auth button[type=submit] { width: 100%; min-height: 44px; }
@@ -438,7 +447,7 @@ html[data-style="treehouse"] .people button, html[data-style="treehouse"] .peopl
   html[data-style="treehouse"] .view.narrow { max-width: 760px; }
 }
 html[data-style="treehouse"] .avatar { width: 32px; height: 32px; background: #ffe8a3; color: #7a4b00; font-weight: 700; }
-html[data-style="treehouse"] .logo { stroke: var(--accent); }
+html[data-style="treehouse"] .brand .wordmark { height: 18px; }
 
 /* server tiles on the dashboard */
 html[data-style="treehouse"] #servers {

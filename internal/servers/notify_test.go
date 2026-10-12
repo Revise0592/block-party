@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ScottSchneck/blockheads-control-panel/internal/notify"
+	"github.com/ScottSchneck/block-party/internal/notify"
 )
 
 func TestServerEventsAreSent(t *testing.T) {

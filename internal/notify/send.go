@@ -91,7 +91,7 @@ func sendDiscord(ctx context.Context, c Discord, e Event) error {
 		content = content[:1900] + "…"
 	}
 	body, _ := json.Marshal(map[string]any{
-		"username": "Blockheads", "content": content,
+		"username": "Block Party", "content": content,
 		"allowed_mentions": map[string]any{"parse": []string{}}, // never ping @everyone
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Webhook, bytes.NewReader(body))
@@ -124,13 +124,13 @@ func redact(err error, secret string) error {
 
 func sendEmail(ctx context.Context, c Email, e Event) error {
 	var msg bytes.Buffer
-	fmt.Fprintf(&msg, "From: %s\r\n", (&mailAddr{"Blockheads", c.From}).String())
+	fmt.Fprintf(&msg, "From: %s\r\n", (&mailAddr{"Block Party", c.From}).String())
 	fmt.Fprintf(&msg, "To: %s\r\n", strings.Join(c.To, ", "))
 	fmt.Fprintf(&msg, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", e.Title))
 	fmt.Fprintf(&msg, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
 	msg.WriteString("MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n")
 	msg.WriteString(strings.ReplaceAll(plain(e), "\n", "\r\n"))
-	msg.WriteString("\r\n\r\n-- \r\nSent by your Blockheads panel. Change what it sends under Help, Notifications.\r\n")
+	msg.WriteString("\r\n\r\n-- \r\nSent by your Block Party panel. Change what it sends under Help, Notifications.\r\n")
 
 	addr := net.JoinHostPort(c.Host, strconv.Itoa(c.Port))
 	d := net.Dialer{Timeout: 15 * time.Second}

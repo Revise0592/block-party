@@ -298,7 +298,7 @@ func (g *gateway) addMapping(ctx context.Context, p Port, local netip.Addr) (per
 			arg{"NewInternalPort", strconv.Itoa(p.Port)},
 			arg{"NewInternalClient", local.String()},
 			arg{"NewEnabled", "1"},
-			arg{"NewPortMappingDescription", "Blockheads " + p.For},
+			arg{"NewPortMappingDescription", "Block Party " + p.For},
 			arg{"NewLeaseDuration", strconv.Itoa(lease)})
 		return err
 	}

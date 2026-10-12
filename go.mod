@@ -1,4 +1,4 @@
-module github.com/ScottSchneck/blockheads-control-panel
+module github.com/ScottSchneck/block-party
 
 go 1.26.0
 

@@ -65,7 +65,7 @@ const (
 var (
 	ErrBadLogin = errors.New("that username and password don't match")
 	ErrBadCode  = errors.New("that code isn't right")
-	ErrNoCode   = errors.New("no reset code is waiting, or it's more than an hour old; run \"docker exec blockheads blockheads reset-password\" to make a new one")
+	ErrNoCode   = errors.New("no reset code is waiting, or it's more than an hour old; run \"docker exec blockparty blockparty reset-password\" to make a new one")
 	ErrHasOwner = errors.New("the panel already has an owner; sign in instead")
 	ErrBusy     = errors.New("the panel is busy checking passwords; try again in a moment")
 	ErrChanged  = errors.New("the password was just changed; sign in again")

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ScottSchneck/blockheads-control-panel/internal/servers"
+	"github.com/ScottSchneck/block-party/internal/servers"
 )
 
 // Worlds and add-ons. Anyone who runs a server sees them and can switch

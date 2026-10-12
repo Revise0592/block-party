@@ -21,7 +21,7 @@ let settings = {};
 async function api(path, options = {}) {
   const res = await fetch(path, {
     ...options,
-    headers: { "Content-Type": "application/json", "X-Blockheads": "1", ...(options.headers || {}) },
+    headers: { "Content-Type": "application/json", "X-Block-Party": "1", ...(options.headers || {}) },
   });
   let body = null;
   try { body = await res.json(); } catch (_) { /* empty */ }
@@ -1711,7 +1711,7 @@ function upload(box, url, file) {
     label.textContent = `Uploading ${file.name}…`;
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url);
-    xhr.setRequestHeader("X-Blockheads", "1");
+    xhr.setRequestHeader("X-Block-Party", "1");
     xhr.setRequestHeader("X-File-Name", encodeURIComponent(file.name));
     xhr.upload.onprogress = (ev) => {
       if (!ev.lengthComputable) return;
@@ -2436,7 +2436,7 @@ async function start() {
   }
   if ($("auth-offline")) $("auth-offline").hidden = true;
   $("version").textContent = st.version ? "Version " + st.version : "";
-  for (const id of ["version-2", "version-3"]) $(id).textContent = st.version ? "Blockheads Control Panel " + st.version : "";
+  for (const id of ["version-2", "version-3"]) $(id).textContent = st.version ? "Block Party " + st.version : "";
   if (st.mode === "signedIn") {
     enterApp(st);
     return;
@@ -2448,7 +2448,7 @@ async function start() {
       ? (st.oldPasswordFromEnv
         ? "Type the panel password you used before (the PANEL_PASSWORD setting). After this, it isn't used any more; you can remove it from the docker run command."
         : "Type the panel password you used before (it's in /data/panel-password). After this, it isn't used any more.")
-      : "It's in the container log. On the Unraid server, run: docker logs blockheads 2>&1 | grep -i \"setup code\"");
+      : "It's in the container log. On the Unraid server, run: docker logs blockparty 2>&1 | grep -i \"setup code\"");
     showOnly("setup-form");
   } else {
     showOnly("login-form");

@@ -1,4 +1,9 @@
-# Blockheads Control Panel
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.png">
+    <img src="assets/logo-light.png" alt="Block Party" height="96">
+  </picture>
+</h1>
 
 A free, open-source, all-in-one panel for running Minecraft and other game
 servers at home. One container runs your servers, a web panel for desktop and
@@ -111,18 +116,25 @@ Every push to `main` publishes a ready-built image, so there's nothing to
 compile. On Unraid (adjust the IP and folders for your network):
 
 ```bash
-mkdir -p /mnt/user/appdata/blockheads/config /mnt/user/appdata/blockheads/data
-cp deploy/servers.example.json /mnt/user/appdata/blockheads/config/servers.json   # then edit it
-chown -R 99:100 /mnt/user/appdata/blockheads
-docker run -d --name blockheads --restart unless-stopped --stop-timeout 60 \
+mkdir -p /mnt/user/appdata/blockparty/config /mnt/user/appdata/blockparty/data
+cp deploy/servers.example.json /mnt/user/appdata/blockparty/config/servers.json   # then edit it
+chown -R 99:100 /mnt/user/appdata/blockparty
+docker run -d --name blockparty --restart unless-stopped --stop-timeout 60 \
   --network br0 --ip 192.168.1.60 \
   -e LIST_IP=192.168.1.60 -e TZ=America/Denver \
-  -v /mnt/user/appdata/blockheads/config:/config \
-  -v /mnt/user/appdata/blockheads/data:/data \
-  ghcr.io/scottschneck/blockheads-control-panel:latest
+  -v /mnt/user/appdata/blockparty/config:/config \
+  -v /mnt/user/appdata/blockparty/data:/data \
+  ghcr.io/scottschneck/block-party:latest
 ```
 
 `servers.json` is optional: it's for servers the panel doesn't run itself.
+
+**Upgrading from Blockheads Control Panel?** It's the same program with a
+new name, and it reads your existing folders as they are. Pull
+`ghcr.io/scottschneck/block-party:latest`, remove the old container, and run
+the new one with the same `-v` folders (you can keep them under
+`appdata/blockheads`). The container name in the commands here is now
+`blockparty`.
 
 **Open the panel** at `https://192.168.1.60:8443`. Your browser warns about the
 certificate once (it's made by the panel itself); continue anyway.
@@ -132,7 +144,7 @@ it's you and not someone else on your network, it wants the setup code from
 the log:
 
 ```bash
-docker logs blockheads 2>&1 | grep -i "setup code"
+docker logs blockparty 2>&1 | grep -i "setup code"
 ```
 
 (Upgrading from a version with a single panel password? That password is the
@@ -140,7 +152,7 @@ setup code.) A short setup guide follows: your gamertag, how consoles join,
 your servers, and a checklist. You stay signed in on each browser for 30 days
 after you last used it.
 
-**Forgot the password?** Run `docker exec blockheads blockheads reset-password`
+**Forgot the password?** Run `docker exec blockparty blockparty reset-password`
 and choose "Forgot your password?" on the sign-in page. The code works once,
 for an hour, and signs out every browser. It also turns off two-factor sign-in,
 since someone who can run commands on the server already controls it.
@@ -169,9 +181,9 @@ recovery codes, the password reset above turns it off.
 `--stop-timeout 60` gives game servers time to save their worlds when the
 container stops.
 
-To update: `docker pull ghcr.io/scottschneck/blockheads-control-panel:latest`,
+To update: `docker pull ghcr.io/scottschneck/block-party:latest`,
 then remove and re-run the container. To build it yourself instead, run
-`docker build -t blockheads-control-panel .` in this folder.
+`docker build -t block-party .` in this folder.
 
 **At home, try LAN Games first.** Consoles on the same network may find the
 list by themselves under **Friends → LAN Games** (a PS5 does), with no DNS
@@ -474,7 +486,7 @@ and the settings files (`server.properties`, allowlist, permissions).
   container is on UTC otherwise.
 
 For copies somewhere else, have Unraid's backup tool (or anything else) copy
-`/mnt/user/appdata/blockheads/data/backups`.
+`/mnt/user/appdata/blockparty/data/backups`.
 
 ### `servers.json`
 

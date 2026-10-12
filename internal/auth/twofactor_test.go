@@ -35,11 +35,11 @@ func TestTwoFactor(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	s.now = func() time.Time { return now }
 
-	if _, _, err := s.StartTwoFactor(ctx, "ip", token, "wrong password", "Blockheads"); err == nil {
+	if _, _, err := s.StartTwoFactor(ctx, "ip", token, "wrong password", "Block Party"); err == nil {
 		t.Error("started without the password")
 	}
-	secret, link, err := s.StartTwoFactor(ctx, "ip", token, "long enough pw", "Blockheads")
-	if err != nil || len(secret) != 32 || !strings.HasPrefix(link, "otpauth://totp/Blockheads:Scott?") || !strings.Contains(link, "secret="+secret) {
+	secret, link, err := s.StartTwoFactor(ctx, "ip", token, "long enough pw", "Block Party")
+	if err != nil || len(secret) != 32 || !strings.HasPrefix(link, "otpauth://totp/Block%20Party:Scott?") || !strings.Contains(link, "secret="+secret) {
 		t.Fatalf("start: %q %q %v", secret, link, err)
 	}
 	if on, _ := s.TwoFactorStatus("Scott"); on {
@@ -56,7 +56,7 @@ func TestTwoFactor(t *testing.T) {
 		t.Errorf("status: %v %d", on, left)
 	}
 	// It can't be moved to another phone without turning it off first.
-	if _, _, err := s.StartTwoFactor(ctx, "ip", token, "long enough pw", "Blockheads"); err == nil {
+	if _, _, err := s.StartTwoFactor(ctx, "ip", token, "long enough pw", "Block Party"); err == nil {
 		t.Error("started again while on")
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, "accounts.json"))
@@ -148,7 +148,7 @@ func TestTwoFactorGuessingAndReset(t *testing.T) {
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0)
 	s.now = func() time.Time { return now }
-	secret, _, _ := s.StartTwoFactor(ctx, "ip", token, "long enough pw", "Blockheads")
+	secret, _, _ := s.StartTwoFactor(ctx, "ip", token, "long enough pw", "Block Party")
 	if _, err := s.ConfirmTwoFactor("ip", token, codeAt(t, secret, now)); err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestResetUserTwoFactor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	secret, _, _ := s.StartTwoFactor(ctx, "ip", tok, "ava password 1", "Blockheads")
+	secret, _, _ := s.StartTwoFactor(ctx, "ip", tok, "ava password 1", "Block Party")
 	if _, err := s.ConfirmTwoFactor("ip", tok, codeAt(t, secret, time.Now())); err != nil {
 		t.Fatal(err)
 	}

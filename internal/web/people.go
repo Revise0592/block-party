@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ScottSchneck/blockheads-control-panel/internal/activity"
-	"github.com/ScottSchneck/blockheads-control-panel/internal/auth"
+	"github.com/ScottSchneck/block-party/internal/activity"
+	"github.com/ScottSchneck/block-party/internal/auth"
 )
 
 // People are the other accounts (kids, usually). Only the owner manages them.

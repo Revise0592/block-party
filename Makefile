@@ -4,7 +4,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 .PHONY: build test vet check fakeconsole docker clean
 
 build:
-	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o blockheads ./cmd/blockheads
+	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o blockparty ./cmd/blockparty
 
 fakeconsole:
 	go build -o fakeconsole ./tools/fakeconsole
@@ -19,7 +19,7 @@ vet:
 check: vet test
 
 docker:
-	docker build --build-arg VERSION=$(VERSION) -t blockheads-control-panel:$(VERSION) .
+	docker build --build-arg VERSION=$(VERSION) -t block-party:$(VERSION) .
 
 clean:
-	rm -f blockheads fakeconsole
+	rm -f blockparty fakeconsole

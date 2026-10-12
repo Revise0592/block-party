@@ -1,4 +1,4 @@
-// Command blockheads is the Blockheads Control Panel.
+// Command blockparty is Block Party, a home game server panel.
 //
 // It runs, in one program:
 //   - the server manager, which installs, runs and updates game servers;
@@ -21,12 +21,12 @@ import (
 	"time"
 	_ "time/tzdata" // TZ works even without the system's time zone files
 
-	"github.com/ScottSchneck/blockheads-control-panel/internal/auth"
-	"github.com/ScottSchneck/blockheads-control-panel/internal/notify"
-	"github.com/ScottSchneck/blockheads-control-panel/internal/outside"
-	"github.com/ScottSchneck/blockheads-control-panel/internal/serverlist"
-	"github.com/ScottSchneck/blockheads-control-panel/internal/servers"
-	"github.com/ScottSchneck/blockheads-control-panel/internal/web"
+	"github.com/ScottSchneck/block-party/internal/auth"
+	"github.com/ScottSchneck/block-party/internal/notify"
+	"github.com/ScottSchneck/block-party/internal/outside"
+	"github.com/ScottSchneck/block-party/internal/serverlist"
+	"github.com/ScottSchneck/block-party/internal/servers"
+	"github.com/ScottSchneck/block-party/internal/web"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -35,13 +35,13 @@ var version = "dev"
 func main() {
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: blockheads [-version]")
-		fmt.Fprintln(os.Stderr, "       blockheads reset-password   make a code to set a new owner password")
+		fmt.Fprintln(os.Stderr, "usage: blockparty [-version]")
+		fmt.Fprintln(os.Stderr, "       blockparty reset-password   make a code to set a new owner password")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
 	if *showVersion {
-		fmt.Println("blockheads", version)
+		fmt.Println("blockparty", version)
 		return
 	}
 	if flag.Arg(0) == "reset-password" {
@@ -54,7 +54,7 @@ func main() {
 		os.Exit(2)
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel})))
-	slog.Info("Blockheads Control Panel", "version", version)
+	slog.Info("Block Party", "version", version)
 
 	webPort, err := envInt("WEB_PORT", 8443)
 	if err != nil {
@@ -178,7 +178,7 @@ func main() {
 		defer wg.Done()
 		notifier.Run(ctx)
 	}()
-	notifier.Send(notify.Event{Kind: notify.PanelStarted, Title: "Blockheads panel started",
+	notifier.Send(notify.Event{Kind: notify.PanelStarted, Title: "Block Party started",
 		Text: fmt.Sprintf("The panel (version %s) started, with %d server(s).", version, len(mgr.List()))})
 	go func() {
 		defer wg.Done()
@@ -208,7 +208,7 @@ func main() {
 }
 
 // resetPassword makes a one-time code for setting a new owner password. Run
-// it inside the container: docker exec blockheads blockheads reset-password
+// it inside the container: docker exec blockparty blockparty reset-password
 func resetPassword() int {
 	dir := envOr("DATA_DIR", "/data")
 	code, err := auth.WriteResetCode(dir)

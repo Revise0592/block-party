@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ScottSchneck/blockheads-control-panel/internal/notify"
+	"github.com/ScottSchneck/block-party/internal/notify"
 )
 
 // Players on Java servers. Java servers keep their allowlist in

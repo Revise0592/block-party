@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ScottSchneck/blockheads-control-panel/internal/notify"
+	"github.com/ScottSchneck/block-party/internal/notify"
 )
 
 // Notifications (owner only). Passwords and tokens are never sent back to

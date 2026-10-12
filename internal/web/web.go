@@ -29,11 +29,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ScottSchneck/blockheads-control-panel/internal/activity"
-	"github.com/ScottSchneck/blockheads-control-panel/internal/auth"
-	"github.com/ScottSchneck/blockheads-control-panel/internal/notify"
-	"github.com/ScottSchneck/blockheads-control-panel/internal/outside"
-	"github.com/ScottSchneck/blockheads-control-panel/internal/servers"
+	"github.com/ScottSchneck/block-party/internal/activity"
+	"github.com/ScottSchneck/block-party/internal/auth"
+	"github.com/ScottSchneck/block-party/internal/notify"
+	"github.com/ScottSchneck/block-party/internal/outside"
+	"github.com/ScottSchneck/block-party/internal/servers"
 )
 
 //go:embed static
@@ -211,8 +211,8 @@ func (s *Server) secure(next http.Handler) http.Handler {
 		// A custom header can't be sent cross-site without the browser asking
 		// first, and we never allow that, so other websites can't press
 		// buttons (or sign you in to their account) through your browser.
-		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Header.Get("X-Blockheads") != "1" {
-			http.Error(w, "missing X-Blockheads header", http.StatusForbidden)
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Header.Get("X-Block-Party") != "1" {
+			http.Error(w, "missing X-Block-Party header", http.StatusForbidden)
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/api/") && !publicAPI[r.URL.Path] {
@@ -527,12 +527,12 @@ func (s *Server) certificate() (tls.Certificate, error) {
 	serial, _ := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 62))
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: "Blockheads Control Panel"},
+		Subject:      pkix.Name{CommonName: "Block Party"},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().AddDate(10, 0, 0),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		DNSNames:     []string{"localhost", "blockheads"},
+		DNSNames:     []string{"localhost", "blockparty"},
 		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
 	}
 	if ip := net.ParseIP(s.opts.HostIP); ip != nil {

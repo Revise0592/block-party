@@ -1,7 +1,7 @@
 # Build output
-/blockheads
+/blockparty
 /fakeconsole
-/blockheads-race
+/blockparty-race
 /dist/
 *.exe
 

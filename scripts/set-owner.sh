@@ -4,9 +4,9 @@
 #   sh scripts/set-owner.sh your-github-name
 set -eu
 owner=${1:?usage: sh scripts/set-owner.sh your-github-name}
-grep -rl --exclude-dir=.git --exclude=set-owner.sh "github.com/yourname/blockheads-control-panel" . |
+grep -rl --exclude-dir=.git --exclude=set-owner.sh "github.com/yourname/block-party" . |
   while read -r f; do
-    sed -i.bak "s#github.com/yourname/blockheads-control-panel#github.com/${owner}/blockheads-control-panel#g" "$f"
+    sed -i.bak "s#github.com/yourname/block-party#github.com/${owner}/block-party#g" "$f"
     rm -f "$f.bak"
   done
-echo "Module is now github.com/${owner}/blockheads-control-panel"
+echo "Module is now github.com/${owner}/block-party"

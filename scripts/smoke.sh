@@ -4,7 +4,7 @@
 # with `sh scripts/smoke.sh` after `make build fakeconsole`.
 set -eu
 RUNS=${RUNS:-40}
-BIN=${BIN:-./blockheads}
+BIN=${BIN:-./blockparty}
 FAKE=${FAKE:-./fakeconsole}
 work=$(mktemp -d)
 pid=

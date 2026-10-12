@@ -20,7 +20,7 @@ func TestSettingsKeepSecrets(t *testing.T) {
 	dir := t.TempDir()
 	n := New(Options{DataDir: dir})
 	v := n.View()
-	if !strings.HasPrefix(v.Ntfy.Topic, "blockheads-") || v.Ntfy.Server != "https://ntfy.sh" || len(v.SMS.Events) != 2 {
+	if !strings.HasPrefix(v.Ntfy.Topic, "blockparty-") || v.Ntfy.Server != "https://ntfy.sh" || len(v.SMS.Events) != 2 {
 		t.Errorf("defaults: %+v", v)
 	}
 	in := v.Settings
@@ -137,11 +137,11 @@ func TestSenders(t *testing.T) {
 	ctx := context.Background()
 	e := Event{Kind: Crash, Title: "Ava’s Server crashed", Text: "It stopped unexpectedly."}
 
-	if err := sendNtfy(ctx, Ntfy{Server: srv.URL, Topic: "blockheads-x", Token: "tk"}, e); err != nil {
+	if err := sendNtfy(ctx, Ntfy{Server: srv.URL, Topic: "blockparty-x", Token: "tk"}, e); err != nil {
 		t.Fatal(err)
 	}
 	r := reqs[0]
-	if r.URL.Path != "/blockheads-x" || r.Header.Get("Priority") != "high" || r.Header.Get("Authorization") != "Bearer tk" || !strings.HasPrefix(r.Header.Get("Title"), "=?utf-8?") || bodies[0] != "It stopped unexpectedly." {
+	if r.URL.Path != "/blockparty-x" || r.Header.Get("Priority") != "high" || r.Header.Get("Authorization") != "Bearer tk" || !strings.HasPrefix(r.Header.Get("Title"), "=?utf-8?") || bodies[0] != "It stopped unexpectedly." {
 		t.Errorf("ntfy: %v %v %q", r.URL, r.Header, bodies[0])
 	}
 

@@ -8,7 +8,7 @@ COPY . .
 ARG VERSION=dev
 RUN go mod tidy && \
     CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
-      -o /out/blockheads ./cmd/blockheads
+      -o /out/blockparty ./cmd/blockparty
 
 # ---- Run ----
 # Debian rather than Alpine: Mojang's Bedrock server needs the standard GNU C
@@ -18,9 +18,9 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates tzdata libcurl4 libcap2-bin && \
     rm -rf /var/lib/apt/lists/* && \
     mkdir -p /config /data && chown 99:100 /config /data
-COPY --from=build /out/blockheads /usr/local/bin/blockheads
+COPY --from=build /out/blockparty /usr/local/bin/blockparty
 # Lets the panel use port 53 (DNS) without running as root.
-RUN setcap cap_net_bind_service=+ep /usr/local/bin/blockheads
+RUN setcap cap_net_bind_service=+ep /usr/local/bin/blockparty
 # 99:100 is nobody:users, the owner Unraid uses for appdata.
 USER 99:100
 ENV HOME=/data
@@ -35,4 +35,4 @@ EXPOSE 8443/tcp 53/udp 53/tcp 19132/udp 19132/tcp 19134-19199/udp 19134-19199/tc
 # Game servers get time to save their worlds when the container stops; give
 # the container at least STOP_TIMEOUT (30s) plus a little with --stop-timeout.
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["/usr/local/bin/blockheads"]
+ENTRYPOINT ["/usr/local/bin/blockparty"]

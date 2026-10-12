@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ScottSchneck/blockheads-control-panel/internal/notify"
+	"github.com/ScottSchneck/block-party/internal/notify"
 )
 
 // Hytale servers. The server files (HytaleServer.jar and Assets.zip, a few

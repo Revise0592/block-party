@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ScottSchneck/blockheads-control-panel/internal/notify"
+	"github.com/ScottSchneck/block-party/internal/notify"
 	"log/slog"
 	"net/http"
 	"os"
@@ -135,6 +135,8 @@ type Meta struct {
 	LastNightly string `json:"lastNightly,omitempty"`
 }
 
+// The name is from before the panel was called Block Party; it stays so
+// existing servers keep working.
 const metaFile = ".blockheads.json"
 
 // New returns a Manager. Call Load to pick up existing servers.

@@ -439,6 +439,7 @@ func (s *Server) pluginsDir() string { return filepath.Join(s.dir(), "plugins") 
 // pluginRecordsFile lists the plugins the panel installed. It lives in
 // plugins/ (Paper ignores it), so backups and restores keep it in step with
 // the jars.
+// Named before the panel was called Block Party (kept for existing servers).
 const pluginRecordsFile = ".blockheads-plugins.json"
 
 func (s *Server) pluginRecords() []AddedPlugin {

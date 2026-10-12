@@ -30,8 +30,8 @@ jobs:
         run: sh scripts/smoke.sh
       - name: Console join smoke test with the race detector
         run: |
-          go build -race -o blockheads-race ./cmd/blockheads
-          BIN=./blockheads-race RUNS=20 sh scripts/smoke.sh
+          go build -race -o blockparty-race ./cmd/blockparty
+          BIN=./blockparty-race RUNS=20 sh scripts/smoke.sh
 
   docker:
     runs-on: ubuntu-latest

@@ -188,7 +188,7 @@ func defaultEvents() []string {
 func randomTopic() string {
 	b := make([]byte, 9)
 	_, _ = rand.Read(b)
-	return "blockheads-" + hex.EncodeToString(b)
+	return "blockparty-" + hex.EncodeToString(b)
 }
 
 func (n *Notifier) fillDefaults(s *Settings) {
@@ -604,5 +604,5 @@ func (n *Notifier) Test(ctx context.Context, ch string) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	return n.sendTo(ctx, ch, s, Event{Kind: "test", Title: "Blockheads test", Text: "Notifications from your Blockheads panel work."})
+	return n.sendTo(ctx, ch, s, Event{Kind: "test", Title: "Block Party test", Text: "Notifications from your Block Party panel work."})
 }

@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ScottSchneck/blockheads-control-panel/internal/auth"
-	"github.com/ScottSchneck/blockheads-control-panel/internal/servers"
+	"github.com/ScottSchneck/block-party/internal/auth"
+	"github.com/ScottSchneck/block-party/internal/servers"
 )
 
 func (s *Server) authRoutes(mux *http.ServeMux) {
