@@ -298,7 +298,7 @@ let ovPlayersKey = ""; // what the Overview player list last showed
 let dashKey = "";      // what the dashboard last showed
 
 function renderDetailHead(s) {
-  const key = JSON.stringify([s.id, s.name, s.state, s.version, s.build, s.updateTo, s.consoles, s.consolesUpdate, s.consolesLive, s.port, s.message, latestVersion, s.players.length, prefs.style, s.access]);
+  const key = JSON.stringify([s.id, s.name, s.state, s.version, s.build, s.updateTo, s.consoles, s.consolesUpdate, s.consolesLive, s.consolesWaiting, s.port, s.message, latestVersion, s.players.length, prefs.style, s.access]);
   if (key === detailKey) return; // unchanged: keep keyboard focus where it is
   detailKey = key;
   $("detail-name").textContent = s.name;
@@ -307,7 +307,9 @@ function renderDetailHead(s) {
     s.type === "hytale" ? el("span", {}, "Hytale ", el("span", { class: "mono" }, s.version || "…"))
     : s.type === "java"
       ? el("span", {}, "Java ", el("span", { class: "mono" }, s.version || "…"), s.build ? el("span", { class: "muted" }, ` · Paper build ${s.build}`) : null,
-        s.consoles ? el("span", { class: "muted", title: s.consolesLive ? "Consoles, phones and tablets can join now" : "Consoles can join while it's running with console support" }, " · consoles too") : null)
+        s.consolesWaiting
+          ? el("span", { class: "warn", title: `Geyser doesn't support Minecraft ${s.consolesWaiting} yet; consoles can join once a newer Geyser is out` }, " · consoles after a Geyser update")
+          : s.consoles ? el("span", { class: "muted", title: s.consolesLive ? "Consoles, phones and tablets can join now" : "Consoles can join while it's running with console support" }, " · consoles too") : null)
       : el("span", {}, "Bedrock ", el("span", { class: "mono" }, s.version || "…")),
     el("span", {}, "Port ", el("span", { class: "mono" }, String(s.port))));
   $("detail-message").textContent = s.message || "";
@@ -1564,7 +1566,9 @@ function renderConsoles() {
   $("consoles-on-label").textContent = s.consoles ? "On" : "Off";
   $("consoles-help").textContent = !s.consoles
     ? "Off: only Minecraft Java Edition (PC and Mac) can join."
-    : s.consolesLive
+    : s.consolesWaiting
+      ? `Geyser, which lets consoles join, doesn't support Minecraft ${s.consolesWaiting} yet, so Xbox, PlayStation, Switch, phones and tablets can't join this server until it does. That's usually a few weeks after a new Minecraft version. The panel installs the new Geyser overnight (or press Update) as soon as it's out.`
+      : s.consolesLive
       ? "Xbox, PlayStation, Switch, phones and tablets can join this server now, on the same port, and show up in the console server list. Add them to the allowlist by gamertag (choose \"Console, phone or tablet\" on the Players tab)."
       : "Xbox, PlayStation, Switch, phones and tablets can join while the server runs with console support (Geyser and Floodgate, installed and kept up to date by the panel). If it was just turned on, restart the server.";
 }

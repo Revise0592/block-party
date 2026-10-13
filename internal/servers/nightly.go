@@ -119,6 +119,7 @@ func (s *Server) nightly(now time.Time, plan Nightly, latest string) {
 		len(s.players) > 0 || s.state == StateImporting || s.state == StateRestoring || s.state == StateError
 	version, preview, hold := s.meta.Version, s.meta.Preview, s.meta.HoldVersion
 	java, build, hytale := s.isJava(), s.meta.Build, s.isHytale()
+	consoles := s.consolesOnLocked()
 	consolesBehind := s.consolePluginsBehindLocked()
 	running := s.cmd != nil && s.state == StateRunning
 	upFor := time.Since(s.startedAt)
@@ -129,7 +130,7 @@ func (s *Server) nightly(now time.Time, plan Nightly, latest string) {
 	behind := !preview && version != "" && versionNewer(latest, version)
 	known := latest != ""
 	if java {
-		r := s.m.LatestPaper()
+		r := s.m.LatestPaper(consoles)
 		known, behind = r.Version != "", javaNewer(r, version, build)
 		latest = r.label()
 	}

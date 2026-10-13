@@ -342,6 +342,12 @@ speaks). Turn it off per server under **Settings → Console players**.
 - Bedrock updates often and consoles update themselves, so Geyser has to
   keep up: a new Geyser version shows as an update ready, and overnight
   updates install it (even on a server whose Minecraft version is held).
+- Geyser takes a few weeks to support each new Minecraft version, and can't
+  load on a newer one. So a server with console players gets the newest
+  Minecraft version Geyser supports (checked on Modrinth), and **Update**
+  moves it up once Geyser does. A server already on a newer version says
+  it's waiting for Geyser, and consoles can join again after the next
+  Geyser update.
 
 ### Hytale servers
 

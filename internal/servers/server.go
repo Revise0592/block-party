@@ -74,6 +74,9 @@ type Status struct {
 	ConsolesLive bool `json:"consolesLive,omitempty"`
 	// ConsolesUpdate: a newer Geyser is out (Update installs it).
 	ConsolesUpdate bool `json:"consolesUpdate,omitempty"`
+	// ConsolesWaiting is the server's Minecraft version when Geyser doesn't
+	// support it yet, so consoles can't join until a newer Geyser is out.
+	ConsolesWaiting string `json:"consolesWaiting,omitempty"`
 }
 
 const (
@@ -200,11 +203,14 @@ func (s *Server) Status() Status {
 		if st.MemoryMB == 0 {
 			st.MemoryMB = defaultMemoryMB
 		}
-		if r := s.m.LatestPaper(); st.Version != "" && javaNewer(r, st.Version, st.Build) {
+		st.Consoles = s.consolesOnLocked()
+		if r := s.m.LatestPaper(st.Consoles); st.Version != "" && javaNewer(r, st.Version, st.Build) {
 			st.UpdateTo = r.label()
 		}
 		st.ConsolesUpdate = s.consolePluginsBehindLocked()
-		st.Consoles = s.consolesOnLocked()
+		if supported, known := s.m.GeyserSupports(st.Version); st.Consoles && st.Version != "" && known && !supported {
+			st.ConsolesWaiting = st.Version
+		}
 		st.ConsolesLive = st.Consoles && s.consolesLive && s.cmd != nil && s.state == StateRunning
 	}
 	if s.isHytale() {

@@ -73,6 +73,7 @@ type Manager struct {
 	imports    importState
 	latest     versionCache
 	paper      paperCache
+	geyserMC   geyserVersionCache
 	plugins    pluginCache
 	// pluginUpdates: the newest release of each Java plugin, for update notes.
 	pluginUpdates pluginUpdateCache

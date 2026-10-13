@@ -22,7 +22,8 @@ import (
 // and answers the commands the panel sends.
 const fakeJava = `#!/bin/sh
 echo "[12:00:00 INFO]: args: $*"
-echo "[12:00:00 INFO]: Starting minecraft server version VERSION"
+v=$(cut -d' ' -f2 paper.jar 2>/dev/null)
+echo "[12:00:00 INFO]: Starting minecraft server version ${v:-VERSION}"
 echo "[12:00:01 INFO]: Done (1.234s)! For help, type \"help\""
 while read line; do
   case "$line" in
@@ -61,6 +62,10 @@ type fakeJavaWorld struct {
 	badJars   bool // plugin downloads come back damaged
 	// Java plugins on the fake Hangar and Modrinth.
 	fakePlugins []*fakePlugin
+	// newer is a Minecraft version newer than version that Paper also has,
+	// and geyserMC the versions Modrinth says Geyser supports (nil: no answer).
+	newer    string
+	geyserMC []string
 }
 
 // pluginJar is the fake jar of a console plugin build.
@@ -91,7 +96,11 @@ func newFakeJavaWorld(t *testing.T) *fakeJavaWorld {
 		p := r.URL.Path
 		switch {
 		case p == "/paper":
-			json.NewEncoder(w).Encode(map[string]any{"versions": map[string][]string{"1.21": {f.version, "1.21.9-rc1", "1.20.6"}}})
+			vs := []string{f.version, "1.21.9-rc1", "1.20.6"}
+			if f.newer != "" {
+				vs = append(vs, f.newer)
+			}
+			json.NewEncoder(w).Encode(map[string]any{"versions": map[string][]string{"1.21": vs}})
 		case strings.HasPrefix(p, "/paper/versions/") && strings.HasSuffix(p, "/builds"):
 			v := strings.TrimSuffix(strings.TrimPrefix(p, "/paper/versions/"), "/builds")
 			jar := []byte("paper " + v + " build " + fmt.Sprint(f.build))
@@ -176,6 +185,15 @@ func newFakeJavaWorld(t *testing.T) *fakeJavaWorld {
 				return
 			}
 			fmt.Fprintf(w, `{"xuid":%s}`, x)
+		case p == "/modrinth/project/geyser/version":
+			if f.geyserMC == nil || r.URL.Query().Get("loaders") != `["paper"]` {
+				w.WriteHeader(404)
+				return
+			}
+			json.NewEncoder(w).Encode([]map[string]any{
+				{"game_versions": []string{"1.20.6"}, "date_published": "2026-01-01T00:00:00Z"},
+				{"game_versions": f.geyserMC, "date_published": "2026-10-10T02:02:25Z"},
+			})
 		case p == "/hangar" || strings.HasPrefix(p, "/hangar/") || strings.HasPrefix(p, "/modrinth/") || strings.HasPrefix(p, "/pluginjar/"):
 			f.servePlugins(w, r)
 		default:
@@ -357,7 +375,7 @@ func keys(m map[string]string) []string {
 func TestLatestPaperSkipsPreReleases(t *testing.T) {
 	f := newFakeJavaWorld(t)
 	m := newJavaManager(t, f)
-	r, err := m.latestPaper(t.Context())
+	r, err := m.latestPaper(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

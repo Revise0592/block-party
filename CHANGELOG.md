@@ -13,7 +13,8 @@ list so Xbox, PlayStation and Switch players can join.
 - **Minecraft Java (Paper)**, with the Java it needs, and plugins from Hangar
   and Modrinth (installed by the owner).
 - **Consoles on Java servers** through Geyser and Floodgate, with ViaVersion,
-  so Bedrock players and consoles can join Java worlds.
+  so Bedrock players and consoles can join Java worlds. A server with console
+  players stays on the newest Minecraft version Geyser supports.
 - **Hytale**, signed in with your Hytale account, with a console, the
   allowlist and operators, settings and backups.
 

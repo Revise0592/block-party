@@ -117,6 +117,73 @@ func (m *Manager) latestGeyserProject(ctx context.Context, project string) (plug
 	}, nil
 }
 
+// geyserJavaVersions asks Modrinth which Minecraft Java versions the newest
+// Geyser build for Paper supports (GeyserMC publishes every build there with
+// that list). A server on a newer version than these can't load Geyser.
+func (m *Manager) geyserJavaVersions(ctx context.Context) (map[string]bool, error) {
+	var builds []struct {
+		GameVersions  []string `json:"game_versions"`
+		DatePublished string   `json:"date_published"`
+	}
+	u := m.opts.ModrinthAPI + "/project/geyser/version?loaders=" + url.QueryEscape(`["paper"]`)
+	if err := m.getJSON(ctx, u, &builds); err != nil {
+		return nil, err
+	}
+	newest := -1
+	for i, b := range builds {
+		if len(b.GameVersions) > 0 && (newest < 0 || b.DatePublished > builds[newest].DatePublished) {
+			newest = i
+		}
+	}
+	if newest < 0 {
+		return nil, errors.New("Modrinth didn't list the Minecraft versions Geyser supports")
+	}
+	set := map[string]bool{}
+	for _, v := range builds[newest].GameVersions {
+		set[v] = true
+	}
+	m.geyserMC.mu.Lock()
+	m.geyserMC.versions, m.geyserMC.at = set, time.Now()
+	m.geyserMC.mu.Unlock()
+	return set, nil
+}
+
+// geyserVersionCache keeps the Minecraft versions Geyser supports.
+type geyserVersionCache struct {
+	mu       sync.Mutex
+	versions map[string]bool // never changed in place
+	at       time.Time
+	busy     bool
+}
+
+// GeyserSupports reports whether the newest Geyser supports a Minecraft
+// version, and whether that's known yet. It checks at most once an hour,
+// without waiting.
+func (m *Manager) GeyserSupports(version string) (supported, known bool) {
+	c := &m.geyserMC
+	c.mu.Lock()
+	if !c.busy && time.Since(c.at) > versionCheckEvery {
+		c.busy = true
+		go func() {
+			ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
+			defer cancel()
+			_, _ = m.geyserJavaVersions(ctx)
+			c.mu.Lock()
+			c.busy = false
+			if c.at.IsZero() || time.Since(c.at) > versionCheckEvery {
+				c.at = time.Now() // failed: try again in an hour
+			}
+			c.mu.Unlock()
+		}()
+	}
+	v := c.versions
+	c.mu.Unlock()
+	if v == nil {
+		return false, false
+	}
+	return v[version], true
+}
+
 // latestViaVersion asks Hangar (PaperMC's plugin site) for ViaVersion.
 func (m *Manager) latestViaVersion(ctx context.Context) (pluginRelease, error) {
 	base := m.opts.HangarAPI + "/ViaVersion"

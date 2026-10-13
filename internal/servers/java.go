@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"os/exec"
@@ -115,8 +116,9 @@ type paperBuild struct {
 }
 
 // latestPaper returns the newest stable Paper build of the newest Minecraft
-// version that has one.
-func (m *Manager) latestPaper(ctx context.Context) (PaperRelease, error) {
+// version that has one. With allowed, only those Minecraft versions count
+// (the ones Geyser supports, for a server with console players).
+func (m *Manager) latestPaper(ctx context.Context, allowed map[string]bool) (PaperRelease, error) {
 	var project struct {
 		Versions map[string][]string `json:"versions"`
 	}
@@ -126,7 +128,7 @@ func (m *Manager) latestPaper(ctx context.Context) (PaperRelease, error) {
 	var versions []string
 	for _, group := range project.Versions {
 		for _, v := range group {
-			if plainVersion.MatchString(v) { // no pre-releases
+			if plainVersion.MatchString(v) && (allowed == nil || allowed[v]) { // no pre-releases
 				versions = append(versions, v)
 			}
 		}
@@ -155,20 +157,29 @@ func (m *Manager) latestPaper(ctx context.Context) (PaperRelease, error) {
 		}
 		return PaperRelease{Version: v, Build: builds[best].ID, URL: d.URL, SHA256: strings.ToLower(d.Checksums["sha256"])}, nil
 	}
+	if allowed != nil {
+		return PaperRelease{}, errNoPaperForGeyser
+	}
 	return PaperRelease{}, errors.New("PaperMC doesn't have a stable build yet")
 }
 
-// paperCache keeps the newest Paper release for "update ready" notes.
+var errNoPaperForGeyser = errors.New("PaperMC has no stable build of a Minecraft version Geyser supports")
+
+// paperCache keeps the newest Paper release for "update ready" notes: the
+// newest of all, and the newest Geyser supports (for servers with console
+// players).
 type paperCache struct {
-	mu      sync.Mutex
-	release PaperRelease
-	at      time.Time
-	busy    bool
+	mu       sync.Mutex
+	release  PaperRelease
+	consoles PaperRelease
+	at       time.Time
+	busy     bool
 }
 
-// LatestPaper returns the newest Paper release, checking at most once an
-// hour, without waiting (like LatestRelease).
-func (m *Manager) LatestPaper() PaperRelease {
+// LatestPaper returns the newest Paper release (with consoles, the newest
+// that Geyser supports), checking at most once an hour, without waiting
+// (like LatestRelease).
+func (m *Manager) LatestPaper(consoles bool) PaperRelease {
 	c := &m.paper
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -177,14 +188,23 @@ func (m *Manager) LatestPaper() PaperRelease {
 		go func() {
 			ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
 			defer cancel()
-			r, err := m.latestPaper(ctx)
+			r, err := m.latestPaper(ctx, nil)
+			rc := r
+			if allowed, gerr := m.geyserJavaVersions(ctx); gerr == nil {
+				if r2, err2 := m.latestPaper(ctx, allowed); err2 == nil {
+					rc = r2
+				}
+			}
 			c.mu.Lock()
 			defer c.mu.Unlock()
 			c.busy, c.at = false, time.Now()
 			if err == nil {
-				c.release = r
+				c.release, c.consoles = r, rc
 			}
 		}()
+	}
+	if consoles {
+		return c.consoles
 	}
 	return c.release
 }
@@ -383,9 +403,31 @@ func (s *Server) installJava(update bool) error {
 	}
 
 	s.say("Asking PaperMC for the current Paper server…")
-	r, err := s.m.latestPaper(ctx)
+	r, err := s.m.latestPaper(ctx, nil)
 	if err != nil {
 		return err
+	}
+	if s.ConsolesOn() {
+		// Geyser needs a Minecraft version it supports: a newer one makes
+		// it fail to start, and consoles can't join.
+		if allowed, gerr := s.m.geyserJavaVersions(ctx); gerr != nil {
+			s.say("Couldn't check which Minecraft versions Geyser supports (" + gerr.Error() + "); using the newest Paper.")
+		} else if !allowed[r.Version] {
+			if update && current != "" && !allowed[current] {
+				// Already on a version Geyser doesn't support yet (made
+				// before this check): newer Paper builds of it still count.
+				allowed = maps.Clone(allowed)
+				allowed[current] = true
+			}
+			if r2, err2 := s.m.latestPaper(ctx, allowed); err2 == nil {
+				if !update || statErr != nil {
+					s.say(fmt.Sprintf("Using Minecraft %s: Geyser, which lets consoles join, doesn't support %s yet. Update moves the server up once it does.", r2.Version, r.Version))
+				}
+				r = r2
+			} else {
+				s.say("Geyser doesn't support Minecraft " + r.Version + " yet, so consoles can't join until it does.")
+			}
+		}
 	}
 	if update && statErr == nil && !javaNewer(r, current, build) {
 		// Java may still be missing (a moved data folder): put it back.

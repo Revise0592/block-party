@@ -321,7 +321,7 @@ func recheckPaper(m *Manager) {
 		if !m.paper.busy {
 			m.paper.at = time.Time{}
 			m.paper.mu.Unlock()
-			m.LatestPaper()
+			m.LatestPaper(true)
 			return
 		}
 		m.paper.mu.Unlock()
@@ -419,5 +419,66 @@ func TestQueuedConsoleChangesOrder(t *testing.T) {
 	}
 	if len(left) != 1 || left[0].Action != "deop" {
 		t.Errorf("kept %+v", left)
+	}
+}
+
+// A Java server with console players gets the newest Minecraft version that
+// Geyser supports, not a newer one it can't load on. Without consoles it gets
+// the newest; turned on later, it says it's waiting for Geyser.
+func TestJavaVersionGeyserSupports(t *testing.T) {
+	f := newFakeJavaWorld(t)
+	f.newer, f.geyserMC = "1.21.5", []string{"1.21.3", "1.21.4"}
+	m := newJavaManager(t, f)
+	st, err := m.CreateJava("Consoles", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, _ := m.Get(st.ID)
+	st = waitFor(t, s, "running", state(StateRunning))
+	if st.Version != "1.21.4" || st.ConsolesWaiting != "" {
+		t.Errorf("with consoles: %+v", st)
+	}
+	waitConsole(t, s, "Geyser, which lets consoles join, doesn't support 1.21.5 yet")
+	// Update doesn't move it past what Geyser supports.
+	if err := s.Update(); err != nil {
+		t.Fatal(err)
+	}
+	waitConsole(t, s, "is up to date")
+	if v := s.Status().Version; v != "1.21.4" {
+		t.Errorf("updated to %s", v)
+	}
+
+	st2, err := m.CreateJava("Java Only", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, _ := m.Get(st2.ID)
+	waitFor(t, j, "running", state(StateRunning))
+	if err := j.SetConsoles(false); err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Update(); err != nil {
+		t.Fatal(err)
+	}
+	st2 = waitFor(t, j, "updated", func(st Status) bool { return st.Version == "1.21.5" && st.State == StateRunning })
+	if st2.ConsolesWaiting != "" {
+		t.Errorf("waiting without consoles: %+v", st2)
+	}
+	if err := j.SetConsoles(true); err != nil {
+		t.Fatal(err)
+	}
+	if w := j.Status().ConsolesWaiting; w != "1.21.5" {
+		t.Errorf("waiting: %q", w)
+	}
+
+	// Geyser catches up: the server is fine again.
+	f.mu.Lock()
+	f.geyserMC = []string{"1.21.4", "1.21.5"}
+	f.mu.Unlock()
+	if _, err := m.geyserJavaVersions(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if w := j.Status().ConsolesWaiting; w != "" {
+		t.Errorf("still waiting: %q", w)
 	}
 }
