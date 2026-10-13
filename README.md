@@ -5,15 +5,19 @@
   </picture>
 </h1>
 
-A free, open-source, all-in-one panel for running Minecraft and other game
-servers at home. One container runs your servers, a web panel for desktop and
-phone, a tiny DNS server, and a console server list so Xbox, PlayStation and
-Switch players can join without extra apps.
+A free, open-source, all-in-one panel for running Minecraft (Bedrock and
+Java) and Hytale servers at home. One container runs your servers, a web panel
+for desktop and phone, a tiny DNS server, and a console server list so Xbox,
+PlayStation and Switch players can join without extra apps.
 
-> **Status: early development.** The console server list and built-in DNS
-> are tested on a Nintendo Switch and a PS5, and phase 1 (Bedrock at home)
-> runs a family's servers day to day. See the [design](docs/design.md) for the
-> full plan.
+<p align="center">
+  <img src="assets/screenshot-servers.png" alt="The Servers page" width="68%">
+  <img src="assets/screenshot-phone.png" alt="The panel on a phone" width="22%">
+</p>
+
+The console server list and built-in DNS are tested on a Nintendo Switch and a
+PS5, and the panel runs a family's servers day to day. See the
+[design](docs/design.md) for how it fits together.
 
 ## What works today
 
@@ -102,32 +106,46 @@ Switch players can join without extra apps.
   setting in case consoles stop falling back to RakNet. See
   [the proof-of-concept notes](docs/proof-of-concept.md) for why.
 
-## Coming next
-
-Release 1.0 on Unraid's Community Apps.
-
 ## Install
 
-You need Docker and a free IP address on your home network for the container,
-because consoles only look for DNS on port 53 and the list on port 19132, and
-each game server needs its own ports.
+The container needs **its own IP address on your home network**. Consoles only
+look for DNS on port 53 and for the server list on port 19132, and every game
+server needs its own ports, so it can't share your server's IP or sit on
+Docker's bridge network. Pick a free address outside your router's DHCP range
+(or reserve one), and keep it: consoles' DNS settings point at it.
 
-Every push to `main` publishes a ready-built image, so there's nothing to
-compile. On Unraid (adjust the IP and folders for your network):
+### On Unraid (Community Apps)
+
+1. Open **Apps**, search for **Block Party**, and choose **Install**.
+2. Set **Network Type** to **Custom: br0** (on some setups it's called
+   **eth0**) and type a free address in **Fixed IP address**. This is the
+   step that matters.
+3. Leave the rest as it is, or set **Server list name** to what consoles
+   should show (for example *Smith Family Servers*). Moving from Crafty? Set
+   **Crafty servers folder** to its servers folder; see
+   [Moving from Crafty](#moving-from-crafty).
+4. **Apply**, then open the container's **WebUI** (`https://<that IP>:8443`).
+
+### With docker run
+
+Ready-built images, so there's nothing to compile: `:latest` is the newest
+release (each also has its own tag, such as `:1.0.0`), and `:edge` follows
+every change on `main`. On Unraid by hand, or
+any Linux machine with a macvlan network (adjust the IP and folders):
 
 ```bash
-mkdir -p /mnt/user/appdata/blockparty/config /mnt/user/appdata/blockparty/data
-cp deploy/servers.example.json /mnt/user/appdata/blockparty/config/servers.json   # then edit it
-chown -R 99:100 /mnt/user/appdata/blockparty
 docker run -d --name blockparty --restart unless-stopped --stop-timeout 60 \
   --network br0 --ip 192.168.1.60 \
-  -e LIST_IP=192.168.1.60 -e TZ=America/Denver \
+  -e TZ=America/Denver -e LIST_NAME="Smith Family Servers" \
   -v /mnt/user/appdata/blockparty/config:/config \
   -v /mnt/user/appdata/blockparty/data:/data \
   ghcr.io/scottschneck/block-party:latest
 ```
 
-`servers.json` is optional: it's for servers the panel doesn't run itself.
+The folders are created if they don't exist, and given to `nobody:users`
+(99:100, Unraid's usual owner); set `PUID` and `PGID` for a different user.
+`/config` is only needed for an optional `servers.json` of servers the panel
+doesn't run itself (see [`deploy/servers.example.json`](deploy/servers.example.json)).
 
 **Upgrading from Blockheads Control Panel?** It's the same program with a
 new name, and it reads your existing folders as they are. Pull
@@ -136,21 +154,28 @@ the new one with the same `-v` folders (you can keep them under
 `appdata/blockheads`). The container name in the commands here is now
 `blockparty`.
 
-**Open the panel** at `https://192.168.1.60:8443`. Your browser warns about the
-certificate once (it's made by the panel itself); continue anyway.
+### Your first ten minutes
 
-The first time, the panel asks you to **create the owner account**. To prove
-it's you and not someone else on your network, it wants the setup code from
-the log:
+1. **Open the panel** at `https://<container IP>:8443`. Your browser warns
+   about the certificate once (the panel makes its own); continue anyway.
+2. **Create the owner account.** To prove it's you and not someone else on
+   your network, the panel asks for the setup code from its log: in Unraid's
+   **Docker** tab, click the Block Party icon and choose **Logs**, or run
+   `docker logs blockparty 2>&1 | grep -i "setup code"`. (Upgrading from a
+   version with a single panel password? That password is the setup code.)
+3. **Follow the setup guide:** your Xbox gamertag (so you're on the allowlist
+   and an operator everywhere), how consoles join, your servers, and a
+   checklist.
+4. **Add a server** (or **Import** them from Crafty). The panel downloads the
+   game server, gives it a port and starts it.
+5. **Join from a console.** On a PS5, look under **Play → Friends → LAN
+   Games** for your server list. On an Xbox or Switch (or if it isn't there),
+   set the console's DNS to the container's IP, restart the console, open
+   **Servers** and join any featured server: you land in a menu of your
+   servers. The panel's **Help** page has the details.
 
-```bash
-docker logs blockparty 2>&1 | grep -i "setup code"
-```
-
-(Upgrading from a version with a single panel password? That password is the
-setup code.) A short setup guide follows: your gamertag, how consoles join,
-your servers, and a checklist. You stay signed in on each browser for 30 days
-after you last used it.
+You stay signed in on each browser for 30 days after you last used it.
+Bookmark the panel on your phone; it works there too.
 
 **Forgot the password?** Run `docker exec blockparty blockparty reset-password`
 and choose "Forgot your password?" on the sign-in page. The code works once,
@@ -435,9 +460,9 @@ downloading take someone who **takes care of** it.
 
 ### Moving from Crafty
 
-Mount Crafty's servers folder read-only at `/import` by adding this to the
-`docker run` command (the path is binhex's Crafty on Unraid; adjust it for
-yours):
+Mount Crafty's servers folder read-only at `/import`. With the Unraid template,
+edit the container and set **Crafty servers folder** to it. With `docker run`,
+add this line (the path is binhex's Crafty on Unraid; adjust it for yours):
 
 ```bash
   -v /mnt/user/appdata/binhex-crafty-4/crafty/servers:/import/crafty:ro \
@@ -505,15 +530,17 @@ apply without a restart.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `LIST_IP` | (required) | The container's IP. The DNS hands it to consoles, and the menu sends them to the panel's servers there |
+| `LIST_IP` | the container's IP | The address the DNS hands to consoles, and where the menu sends them to the panel's servers. Only needed if the container has more than one IPv4 address |
+| `PUID`, `PGID` | `99`, `100` | The user and group the panel runs as (Unraid's `nobody:users`). A new, root-owned data folder is given to them at start |
+| `RUN_AS_ROOT` | `false` | Keep running as root instead (not recommended) |
 | `PANEL_PASSWORD` | empty | Only used before the owner account exists, as the setup code (older versions used it as the panel password) |
 | `WEB_PORT` | `8443` | Web panel port |
 | `WEB_TLS` | `true` | Serve the panel over HTTPS with a self-signed certificate. `false` for plain HTTP behind your own reverse proxy |
-| `STOP_TIMEOUT` | `30` | Seconds a game server gets to save and stop before it's forced |
+| `STOP_TIMEOUT` | `30` | Seconds a game server gets to save and stop before it's forced. With `--stop-timeout 60`, keep it at 45 or less |
 | `PLAYER_SERVERS` | `true` | Players can connect to any server by address from the console menu and save it to their own list |
 | `REQUIRE_SIGN_IN` | `false` | Turn away consoles whose Xbox sign-in can't be verified. Off by default because the game server checks sign-in itself |
 | `SERVERS_FILE` | `/config/servers.json` | Extra servers for the console menu that the panel doesn't run (optional) |
-| `TZ` | `UTC` | Time zone for scheduled backups, e.g. `America/Denver` |
+| `TZ` | `UTC` | Time zone for scheduled backups and overnight updates, e.g. `America/Denver`. Unraid sets it for you |
 | `IMPORT_DIR` | `/import` | Where other panels' server folders are mounted (read-only) for **Import** |
 | `DATA_DIR` | `/data` | Game servers (`/data/servers`), backups (`/data/backups`), keys and certificates |
 | `MENU_TITLE` | `Pick a server` | Title of the console menu |

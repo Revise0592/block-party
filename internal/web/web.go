@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log"
 	"log/slog"
 	"math/big"
 	"net"
@@ -115,12 +116,29 @@ func New(opts Options, mgr *servers.Manager) (*Server, error) {
 	return s, nil
 }
 
+// serverLog passes the HTTP server's own messages to the panel's log. TLS
+// handshake errors are routine with the panel's self-made certificate (a
+// browser that doesn't trust it yet hangs up, or opens spare connections it
+// then drops), so they're only logged at debug level.
+type serverLog struct{ log *slog.Logger }
+
+func (l serverLog) Write(p []byte) (int, error) {
+	msg := strings.TrimSpace(string(p))
+	if strings.Contains(msg, "TLS handshake error") {
+		l.log.Debug(msg)
+	} else {
+		l.log.Warn(msg)
+	}
+	return len(p), nil
+}
+
 // Run serves until ctx is cancelled.
 func (s *Server) Run(ctx context.Context) error {
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", s.opts.Port),
 		Handler:           s.routes(),
 		ReadHeaderTimeout: 10 * time.Second,
+		ErrorLog:          log.New(serverLog{s.log}, "", 0),
 	}
 	go func() {
 		<-ctx.Done()

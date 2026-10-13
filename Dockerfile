@@ -21,8 +21,9 @@ RUN apt-get update && \
 COPY --from=build /out/blockparty /usr/local/bin/blockparty
 # Lets the panel use port 53 (DNS) without running as root.
 RUN setcap cap_net_bind_service=+ep /usr/local/bin/blockparty
-# 99:100 is nobody:users, the owner Unraid uses for appdata.
-USER 99:100
+# The panel runs as nobody:users (99:100, the owner Unraid uses for appdata),
+# or PUID and PGID. It starts as root only to give a brand-new, root-owned
+# data folder to that user, then switches to it (see cmd/blockparty/user_unix.go).
 ENV HOME=/data
 VOLUME ["/config", "/data"]
 # 8443/tcp = web panel

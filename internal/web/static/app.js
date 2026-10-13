@@ -1132,7 +1132,7 @@ function renderBackups(v, id) {
   $("plan-help").replaceChildren(
     "A server nobody has played on since its last backup is skipped, so the kept backups aren't all the same. Backups you make by hand stay until you delete them; the panel also keeps the last 5 from before updates and 3 from before restores. ",
     `Times use the panel's clock: ${v.timeZone}, now ${v.now}.`,
-    ...(utc ? [el("span", { class: "warn" }, " To use your own time zone, add -e TZ=America/Denver (or yours) to the docker run command.")] : []));
+    ...(utc ? [el("span", { class: "warn" }, " To use your own time zone, set TZ (Unraid does this itself; with docker run, add -e TZ=America/Denver or yours).")] : []));
   $("backups-last-error").textContent = v.lastError || "";
   $("backups-last-error").hidden = !v.lastError;
   $("backup-now").disabled = v.running;
@@ -1970,7 +1970,7 @@ function renderImports(v) {
   $("import-ready").hidden = !v.available;
   if (!v.available) {
     $("import-missing").replaceChildren(
-      "Nothing to import yet. Mount the other panel's servers folder read-only at /import and restart the container. For Crafty on Unraid, add this to the docker run command:",
+      "Nothing to import yet. In Unraid, edit the container and set \"Crafty servers folder\" to the other panel's servers folder (for binhex's Crafty: /mnt/user/appdata/binhex-crafty-4/crafty/servers), then apply. With docker run, add:",
       el("code", { class: "block" }, "-v /mnt/user/appdata/binhex-crafty-4/crafty/servers:/import/crafty:ro"));
     return;
   }
@@ -2448,7 +2448,7 @@ async function start() {
       ? (st.oldPasswordFromEnv
         ? "Type the panel password you used before (the PANEL_PASSWORD setting). After this, it isn't used any more; you can remove it from the docker run command."
         : "Type the panel password you used before (it's in /data/panel-password). After this, it isn't used any more.")
-      : "It's in the container log. On the Unraid server, run: docker logs blockparty 2>&1 | grep -i \"setup code\"");
+      : "It's in the container's log. In Unraid, open the Docker tab, click the Block Party icon and choose Logs. Or run: docker logs blockparty 2>&1 | grep -i \"setup code\"");
     showOnly("setup-form");
   } else {
     showOnly("login-form");
@@ -2732,7 +2732,7 @@ function renderGuideServers() {
   const parts = [];
   parts.push(g.servers === 0 ? "You don't have any servers yet." : `You have ${g.servers} server${g.servers === 1 ? "" : "s"} in the panel.`);
   if (g.importWaiting > 0) parts.push(` ${g.importWaiting} server${g.importWaiting === 1 ? " is" : "s are"} in the import folder and not imported yet.`);
-  else if (!g.importMounted && g.servers === 0) parts.push(" To bring servers over from Crafty, mount its servers folder at /import (see the README), or add a new one.");
+  else if (!g.importMounted && g.servers === 0) parts.push(" To bring servers over from Crafty, set the container's Crafty servers folder (it's mounted at /import, see the README), or add a new one.");
   $("guide-servers-text").textContent = parts.join("");
   $("guide-import").hidden = !(g.importMounted && g.importWaiting > 0);
   $("guide-add").hidden = g.servers > 0 && g.importWaiting === 0;
@@ -2750,16 +2750,17 @@ async function renderChecklist() {
     ? checkItem(true, `Your gamertag is ${g.ownerGamertag}.`)
     : checkItem(false, "Add your gamertag in step 1 so you're never locked out of your own servers."));
   items.push(g.timeZoneIsUTC
-    ? checkItem(false, "The panel's clock is on UTC, so a 4 am backup would run at the wrong time. Add -e TZ=America/Denver (or your time zone) to the docker run command.")
+    ? checkItem(false, "The panel's clock is on UTC, so a 4 am backup would run at the wrong time. Set TZ to your time zone (for example America/Denver): Unraid does this itself; with docker run, add -e TZ=America/Denver.")
     : checkItem(true, `Time zone: ${g.timeZone}.`));
   if (g.backupsOff.length) items.push(checkItem(false, `Automatic backups are off for: ${g.backupsOff.join(", ")}.`));
   if (g.neverBackedUp.length) items.push(checkItem(false, `Not backed up yet: ${g.neverBackedUp.join(", ")}. The first automatic backup runs within a minute or two; or press Back up now on its Backups tab.`));
   if (!g.backupsOff.length && !g.neverBackedUp.length && g.servers > 0) items.push(checkItem(true, "Every server has a backup and a schedule."));
   if (g.importMounted && g.importWaiting === 0 && g.servers > 0) {
-    items.push(checkItem(true, "Everything in the import folder is imported. Once you're happy, stop the servers in Crafty for good and remove the /import line from the docker run command."));
+    items.push(checkItem(true, "Everything in the import folder is imported. Once you're happy, stop the servers in Crafty for good and remove the import folder from the container's settings."));
   } else if (g.importWaiting > 0) {
     items.push(checkItem(false, `${g.importWaiting} server${g.importWaiting === 1 ? " is" : "s are"} waiting in the import folder.`));
   }
+  if (g.listIP) items.push(checkItem(true, `Consoles and their DNS settings use ${g.listIP}, so keep it from changing: in Unraid, give the container a fixed IP address in its settings.`));
   items.push(checkItem(true, `Bookmark ${location.origin} on your phone; the panel works there too.`));
   $("guide-checklist").replaceChildren(...items);
 }

@@ -128,7 +128,7 @@ func (m *Manager) ScanImports() ([]ImportCandidate, error) {
 	})
 	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
 	if walkErr == nil && len(unreadable) > 0 {
-		walkErr = fmt.Errorf("the panel can't read %d folder(s), such as %s; check that the files can be read by user 99 (nobody)", len(unreadable), unreadable[0])
+		walkErr = fmt.Errorf("the panel can't read %d folder(s), such as %s; check that the panel's user (99, nobody, unless PUID is set) can read the files", len(unreadable), unreadable[0])
 	}
 	return out, walkErr
 }

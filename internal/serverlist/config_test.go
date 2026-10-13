@@ -1,8 +1,10 @@
 package serverlist
 
 import (
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -90,5 +92,40 @@ func TestExtraSignalingPorts(t *testing.T) {
 		if got := len(c.ExtraSignalingPorts); got != want {
 			t.Errorf("EXTRA_SIGNALING_PORTS=%q gave %d ports, want %d", value, got, want)
 		}
+	}
+}
+
+func TestListIPFromInterface(t *testing.T) {
+	old := interfaceAddrs
+	defer func() { interfaceAddrs = old }()
+	addrs := func(cidrs ...string) func() ([]net.Addr, error) {
+		return func() ([]net.Addr, error) {
+			var out []net.Addr
+			for _, c := range cidrs {
+				ip, n, _ := net.ParseCIDR(c)
+				n.IP = ip
+				out = append(out, n)
+			}
+			return out, nil
+		}
+	}
+	t.Setenv("LIST_IP", "")
+	interfaceAddrs = addrs("127.0.0.1/8", "::1/128", "10.0.1.117/24", "fe80::1/64", "169.254.3.4/16")
+	c, err := LoadConfig()
+	if err != nil || c.ListIP.String() != "10.0.1.117" {
+		t.Fatalf("one address: %v %v", c, err)
+	}
+	interfaceAddrs = addrs("127.0.0.1/8", "10.0.1.117/24", "192.168.9.2/24")
+	if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), "several") {
+		t.Errorf("two addresses: %v", err)
+	}
+	interfaceAddrs = addrs("127.0.0.1/8")
+	if _, err := LoadConfig(); err == nil {
+		t.Error("no address")
+	}
+	// LIST_IP still wins.
+	t.Setenv("LIST_IP", "10.0.1.50")
+	if c, err := LoadConfig(); err != nil || c.ListIP.String() != "10.0.1.50" {
+		t.Errorf("LIST_IP: %v %v", c, err)
 	}
 }

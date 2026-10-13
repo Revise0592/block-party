@@ -20,6 +20,9 @@ type Config struct {
 	// ListIP is the address the built-in DNS hands to devices on the home
 	// network for the featured-server names. Normally this container's own IP.
 	ListIP netip.Addr
+	// ListIPFound is set when LIST_IP wasn't given and ListIP is the
+	// container's own address (see LogListIP).
+	ListIPFound bool
 	// PublicIP is handed to devices outside the home network, and advertised
 	// in WebRTC candidates. Optional; empty means home-only.
 	PublicIP netip.Addr
@@ -171,15 +174,21 @@ func LoadConfig() (*Config, error) {
 		PlayerServers:  envBool("PLAYER_SERVERS", true),
 	}
 
+	var err error
 	listIP := env("LIST_IP", "")
 	if listIP == "" {
-		return nil, fmt.Errorf("LIST_IP is required: set it to this container's IP on your home network (for example 10.0.1.116)")
+		ip, err := ownIPv4()
+		if err != nil {
+			return nil, err
+		}
+		c.ListIP, c.ListIPFound = ip, true
+	} else {
+		ip, err := netip.ParseAddr(listIP)
+		if err != nil || !ip.Is4() {
+			return nil, fmt.Errorf("LIST_IP must be an IPv4 address, got %q", listIP)
+		}
+		c.ListIP = ip
 	}
-	ip, err := netip.ParseAddr(listIP)
-	if err != nil || !ip.Is4() {
-		return nil, fmt.Errorf("LIST_IP must be an IPv4 address, got %q", listIP)
-	}
-	c.ListIP = ip
 
 	if pub := env("PUBLIC_IP", ""); pub != "" {
 		ip, err := netip.ParseAddr(pub)
@@ -390,4 +399,49 @@ func loadServers(path string) ([]Server, error) {
 		valid = append(valid, s)
 	}
 	return valid, nil
+}
+
+// LogListIP says where the list's address came from, once logging is set up.
+func (c *Config) LogListIP() {
+	switch {
+	case !c.ListIPFound:
+	case dockerBridge.Contains(c.ListIP):
+		slog.Warn("this container is on Docker's own bridge network, which consoles can't reach; give it its own IP on your home network (Unraid: Network Type br0 with a fixed IP)", "ip", c.ListIP)
+	default:
+		slog.Info("LIST_IP isn't set; using this container's own address", "ip", c.ListIP)
+	}
+}
+
+// interfaceAddrs is net.InterfaceAddrs (tests replace it).
+var interfaceAddrs = net.InterfaceAddrs
+
+// dockerBridge is Docker's default bridge network.
+var dockerBridge = netip.MustParsePrefix("172.17.0.0/16")
+
+// ownIPv4 finds the container's address when LIST_IP isn't set: its one
+// IPv4 address that isn't loopback. With more than one it can't tell which
+// network the consoles are on, so LIST_IP is needed.
+func ownIPv4() (netip.Addr, error) {
+	addrs, err := interfaceAddrs()
+	if err != nil {
+		return netip.Addr{}, fmt.Errorf("LIST_IP isn't set and this container's address can't be read (%v): set LIST_IP to its IP on your home network", err)
+	}
+	var found []netip.Addr
+	for _, a := range addrs {
+		p, err := netip.ParsePrefix(a.String())
+		if err != nil {
+			continue
+		}
+		ip := p.Addr().Unmap()
+		if ip.Is4() && !ip.IsLoopback() && !ip.IsLinkLocalUnicast() {
+			found = append(found, ip)
+		}
+	}
+	switch len(found) {
+	case 1:
+		return found[0], nil
+	case 0:
+		return netip.Addr{}, errors.New("LIST_IP isn't set and this container has no IPv4 address: set LIST_IP to its IP on your home network (for example 10.0.1.116)")
+	}
+	return netip.Addr{}, fmt.Errorf("LIST_IP isn't set and this container has several addresses (%v): set LIST_IP to the one on your home network", found)
 }

@@ -40,6 +40,7 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+	dropRoot()
 	if *showVersion {
 		fmt.Println("blockparty", version)
 		return
@@ -55,6 +56,7 @@ func main() {
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel})))
 	slog.Info("Block Party", "version", version)
+	cfg.LogListIP()
 
 	webPort, err := envInt("WEB_PORT", 8443)
 	if err != nil {

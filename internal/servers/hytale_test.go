@@ -217,8 +217,8 @@ func signInHytale(t *testing.T, m *Manager) {
 		if v.Pending != nil && v.Pending.Step == 2 && v.Pending.Code == "SERV-1234" {
 			sawSecond = true
 		}
-		if v.SignedIn {
-			break
+		if v.SignedIn && v.Pending == nil {
+			break // the finished sign-in is cleared just after the account is saved
 		}
 		time.Sleep(5 * time.Millisecond)
 	}

@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -403,5 +404,18 @@ func TestPrefsAndUpdates(t *testing.T) {
 		if w := call(h, "GET", f, ""); w.Code != 200 {
 			t.Errorf("%s: %d", f, w.Code)
 		}
+	}
+}
+
+func TestServerLogQuietsHandshakes(t *testing.T) {
+	var buf strings.Builder
+	l := serverLog{slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))}
+	l.Write([]byte("http: TLS handshake error from 10.0.1.252:58142: remote error: tls: unknown certificate\n"))
+	if buf.Len() != 0 {
+		t.Errorf("handshake error logged at info: %q", buf.String())
+	}
+	l.Write([]byte("http: panic serving 1.2.3.4: boom\n"))
+	if !strings.Contains(buf.String(), "level=WARN") || !strings.Contains(buf.String(), "panic serving") {
+		t.Errorf("other messages lost: %q", buf.String())
 	}
 }
