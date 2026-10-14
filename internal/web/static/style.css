@@ -149,14 +149,15 @@ html[data-mode="light"] .wm-a { fill: #2ba595; } html[data-mode="light"] .wm-a2 
 /* Pages use the window's width (up to 1920px, then centred);
    forms that read best narrow stay narrow and centred. */
 .view { max-width: 1920px; margin: 0 auto; }
-.view.narrow { max-width: 860px; }
-/* On wide screens, pages of separate cards flow into two columns, and so do
-   a server's settings groups. Headings and notes stay full width. */
+/* Narrow pages (forms) start at the same left edge as every other page. */
+.view.narrow > * { max-width: 860px; }
+/* Pages of separate cards (Help, Account) put them in two columns on wide
+   screens, each column's cards stacked from the same top line; and a
+   server's settings groups flow into two columns. */
+.cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 16px; align-items: start; }
+.col { min-width: 0; }
 @media (min-width: 1400px) {
-  .view.flow { max-width: 1920px; columns: 2; column-gap: 16px; }
-  .view.flow > * { break-inside: avoid; }
-  .view.flow > :not(.card) { column-span: all; }
-  .view.flow > .card { display: block; width: 100%; margin-top: 0; margin-bottom: 14px; }
+  .cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #settings-groups { columns: 2; column-gap: 16px; }
   #settings-groups > * { break-inside: avoid; display: block; width: 100%; margin-top: 0; margin-bottom: 14px; }
 }
@@ -180,7 +181,7 @@ html[data-mode="light"] .wm-a { fill: #2ba595; } html[data-mode="light"] .wm-a2 
 
 /* server table */
 .server-table { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--panel); margin-bottom: 18px; box-shadow: var(--shadow); }
-.srow { display: grid; grid-template-columns: minmax(0, 2.3fr) minmax(0, 1.1fr) minmax(0, 1.4fr) minmax(0, 1.1fr) minmax(0, 1.1fr) auto; gap: 12px; align-items: center; padding: 13px 18px; border-bottom: 1px solid var(--line-2); font-size: 14px; }
+.srow { display: grid; grid-template-columns: minmax(0, 2.3fr) minmax(0, 1.1fr) minmax(0, 1.4fr) minmax(0, 1.1fr) minmax(0, 1.1fr) 168px; gap: 12px; align-items: center; padding: 13px 18px; border-bottom: 1px solid var(--line-2); font-size: 14px; }
 .srow:last-child { border-bottom: none; }
 .srow.head { padding: 9px 18px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel-2) 40%, var(--panel)); }
 .srow .name { color: var(--text); text-decoration: none; font-weight: 600; font-size: 15px; }
@@ -456,7 +457,6 @@ html[data-style="treehouse"] .people button, html[data-style="treehouse"] .peopl
   html[data-style="treehouse"] .nav.account svg { display: none; }
   html[data-style="treehouse"] .content { padding: 30px 40px 48px; }
   html[data-style="treehouse"] .view { margin: 0 auto; max-width: 1920px; }
-  html[data-style="treehouse"] .view.narrow { max-width: 760px; }
 }
 html[data-style="treehouse"] .avatar { width: 32px; height: 32px; background: #ffe8a3; color: #7a4b00; font-weight: 700; }
 html[data-style="treehouse"] .brand .wordmark { height: 18px; }

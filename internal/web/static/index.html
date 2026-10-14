@@ -234,9 +234,11 @@
     </section>
 
     <!-- Help -->
-    <section id="view-help" class="view flow" hidden>
+    <section id="view-help" class="view" hidden>
       <h1>Help</h1>
       <h2 class="section-title">Joining from consoles</h2>
+      <div class="cols">
+      <div class="col">
       <div class="card">
         <h2>At home, the easy way</h2>
         <p>Open Minecraft, go to <b>Play → Friends</b>, and under <b>LAN Games</b> pick <b id="join-list-name"></b>. Then pick a server. A PS5 finds it this way with no other setup.</p>
@@ -250,6 +252,8 @@
           <li>You land in the menu of your servers. Pick one.</li>
         </ol>
       </div>
+      </div>
+      <div class="col">
       <div class="card">
         <h2>Friends outside the house</h2>
         <p class="muted">Once the owner turns on outside access, each server's Overview has a "Friends outside the house" card: open the server to them there, and copy an invite that tells a friend exactly how to join from a PC, phone or console.</p>
@@ -258,8 +262,12 @@
         <h2>Letting people in</h2>
         <p class="muted">Players need to be on a server's allowlist. Anyone the menu sends to a server who isn't shows up under <b>Tried to join</b>, with an Allow button.</p>
       </div>
+      </div>
+      </div>
 
       <h2 class="section-title">The panel</h2>
+      <div class="cols">
+      <div class="col">
       <div class="card help-links">
         <a href="#/guide" data-owner-only><b>Setup guide</b><span class="muted">Your gamertag, how consoles join, your servers, and a checklist of what's left.</span></a>
         <a href="#/import" data-owner-only><b>Import servers</b><span class="muted">Copy servers in from Crafty Controller or another folder.</span></a>
@@ -269,6 +277,8 @@
         <a href="#/people" data-owner-only><b>People</b><span class="muted">Accounts for your kids, and which servers each one can use.</span></a>
         <a href="#/account"><b>Appearance and password</b><span class="muted">Light or dark, change your password, sign out.</span></a>
       </div>
+      </div>
+      <div class="col">
       <div class="card" data-not-owner>
         <h2>Forgot your password?</h2>
         <p class="muted">Ask <span class="owner-name">the owner</span>: they can give you a new one.</p>
@@ -277,6 +287,8 @@
         <h2>Forgot your password?</h2>
         <p class="muted">On the Unraid server, run this, then choose "Forgot your password?" on the sign-in page and type the code it prints. The code works once, for an hour.</p>
         <code class="block">docker exec blockparty blockparty reset-password</code>
+      </div>
+      </div>
       </div>
       <p class="muted small" id="version-3"></p>
     </section>
@@ -470,8 +482,10 @@
     </section>
 
     <!-- Account -->
-    <section id="view-account" class="view flow" hidden>
+    <section id="view-account" class="view" hidden>
       <h1>Signed in as <span id="account-name"></span></h1>
+      <div class="cols">
+      <div class="col">
 
       <section class="card">
         <h2>Appearance</h2>
@@ -508,6 +522,8 @@
         <a class="button" href="#/people">Open People</a>
       </section>
 
+      </div>
+      <div class="col">
       <section class="card" id="two-card">
         <h2>Two-factor sign-in</h2>
         <p class="muted small" id="two-status">…</p>
@@ -555,6 +571,8 @@
           <button id="logout-all">Sign out everywhere</button>
         </div>
       </section>
+      </div>
+      </div>
       <p class="muted small" id="version-2"></p>
     </section>
 
@@ -677,7 +695,7 @@
           <h3>Updates</h3>
           <label class="check">
             <input type="checkbox" id="hold-version">
-            <span>Keep this server on its Bedrock version (overnight updates skip it)</span>
+            <span id="hold-label">Keep this server on its current version (overnight updates skip it)</span>
           </label>
           <p class="muted small" id="hold-help"></p>
         </section>

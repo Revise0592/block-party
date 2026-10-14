@@ -1201,9 +1201,12 @@ function renderHold() {
   $("hold-card").hidden = access(s) < CARE;
   if (!s) return;
   $("hold-version").checked = !!s.holdVersion;
+  const game = s.type === "java" ? "Minecraft Java" : s.type === "hytale" ? "Hytale" : "Bedrock";
+  $("hold-label").textContent = `Keep this server on its ${game} version (overnight updates skip it)`;
+  const extra = s.type === "java" && s.consoles ? " Console support (Geyser) is still kept up to date." : "";
   $("hold-help").textContent = s.preview
     ? "This is a preview server, which overnight updates always skip."
-    : (s.holdVersion ? `It stays on ${s.version ? "Bedrock " + s.version : "its current version"} until you press Update or untick this.` : "When overnight updates are on, it's updated to each new Bedrock version while nobody is playing.");
+    : (s.holdVersion ? `It stays on ${s.version ? game + " " + s.version : "its current version"} until you press Update or untick this.${extra}` : `When overnight updates are on, it's updated to each new ${game} version while nobody is playing.`);
 }
 
 $("hold-version").addEventListener("change", async (ev) => {
