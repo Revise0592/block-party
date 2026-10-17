@@ -25,6 +25,7 @@ func (s *Server) outsideRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/outside/playit", ownerOnly(s.unlinkPlayit))
 	mux.HandleFunc("GET /api/servers/{id}/outside", s.withServer(levelRun, s.serverOutside))
 	mux.HandleFunc("POST /api/servers/{id}/outside", s.withServer(levelCare, s.setServerOutside))
+	mux.HandleFunc("POST /api/servers/{id}/outside/tunnels", s.withServer(levelCare, s.setServerTunnels))
 }
 
 // OutsideServers lists the panel's servers for the outside package.
@@ -142,7 +143,12 @@ type serverOutsideView struct {
 	// Playit: friends come in through playit.gg. Address and Port are then
 	// the server's playit.gg address; a Java server with consoles has a
 	// second one for them (Bedrock, over UDP).
-	Playit         bool   `json:"playit,omitempty"`
+	Playit bool `json:"playit,omitempty"`
+	// PlayitOnly: a Java server with consoles keeps just its Java ("tcp") or
+	// its Bedrock and console ("udp") tunnel; "" for both. PlayitChoice
+	// says it can choose.
+	PlayitOnly     string `json:"playitOnly,omitempty"`
+	PlayitChoice   bool   `json:"playitChoice,omitempty"`
 	ConsoleAddress string `json:"consoleAddress,omitempty"`
 	ConsolePort    int    `json:"consolePort,omitempty"`
 }
@@ -196,6 +202,17 @@ func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsi
 func (s *Server) playitView(v *serverOutsideView, id string, protos []string) {
 	v.Playit, v.UPnP, v.Shared, v.Consoles, v.ConsoleDNS = true, false, false, false, ""
 	v.Address, v.Port, v.Opened, v.PortError = "", 0, true, ""
+	if v.JavaConsoles {
+		v.PlayitChoice = true
+		v.PlayitOnly = s.out.Playit().Only(id)
+		// From outside, it's what the one tunnel lets in.
+		switch v.PlayitOnly {
+		case "tcp":
+			protos, v.JavaConsoles = []string{"TCP"}, false
+		case "udp":
+			protos, v.Java, v.JavaConsoles = []string{"UDP"}, false, false
+		}
+	}
 	for i, proto := range protos {
 		t, ok := s.out.Playit().Tunnel(id, strings.ToLower(proto))
 		if !ok || !t.Ready {
@@ -213,6 +230,27 @@ func (s *Server) playitView(v *serverOutsideView, id string, protos []string) {
 	if !s.out.Playit().Linked() {
 		v.Opened, v.PortError = false, "playit.gg isn't linked yet"
 	}
+}
+
+// setServerTunnels chooses which playit.gg tunnels a Java server with
+// console players keeps.
+func (s *Server) setServerTunnels(w http.ResponseWriter, r *http.Request, srv *servers.Server) {
+	var req struct {
+		Only string `json:"only"`
+	}
+	if !readBody(w, r, &req) {
+		return
+	}
+	was := s.out.Playit().Only(srv.ID())
+	if err := s.out.Playit().SetOnly(srv.ID(), req.Only); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if was != req.Only {
+		s.note(r, srv, map[string]string{"": "made playit.gg tunnels for Java and console players",
+			"tcp": "made a playit.gg tunnel for Java players only", "udp": "made a playit.gg tunnel for Bedrock and console players only"}[req.Only])
+	}
+	writeJSON(w, http.StatusOK, s.outsideView(srv, s.refreshOutside(r)))
 }
 
 func (s *Server) serverOutside(w http.ResponseWriter, r *http.Request, srv *servers.Server) {

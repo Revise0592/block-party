@@ -79,11 +79,16 @@ func (s Server) Protocols() []string {
 	return []string{"UDP"}
 }
 
-// PlayitTunnels returns the playit.gg tunnels the server needs.
-func (s Server) PlayitTunnels(open bool) []playit.Want {
+// PlayitTunnels returns the playit.gg tunnels the server needs. only ("tcp"
+// or "udp") keeps just one of a Java server's two when it takes console
+// players too; "" keeps both.
+func (s Server) PlayitTunnels(open bool, only string) []playit.Want {
 	var out []playit.Want
 	for _, proto := range s.Protocols() {
 		w := playit.Want{ServerID: s.ID, Name: s.Name, Port: s.Port, Proto: strings.ToLower(proto), Open: open}
+		if only != "" && s.Java && s.JavaConsoles && w.Proto != only {
+			continue
+		}
 		switch {
 		case proto == "TCP":
 			w.Type = playit.TypeJava
@@ -436,7 +441,7 @@ func (m *Manager) reconcile(ctx context.Context) (busy bool) {
 	for _, s := range list {
 		ss := ServerState{ID: s.ID, Name: s.Name, Port: s.Port, Open: s.Open, Problem: s.Problem}
 		reached := s.Open && s.Problem == "" && set.Enabled
-		tunnels = append(tunnels, s.PlayitTunnels(reached && viaPlayit)...)
+		tunnels = append(tunnels, s.PlayitTunnels(reached && viaPlayit, m.pl.Only(s.ID))...)
 		if reached {
 			ss.Reached = true
 			if !viaPlayit {

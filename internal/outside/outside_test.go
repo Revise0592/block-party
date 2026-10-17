@@ -304,19 +304,25 @@ func TestPlayitInsteadOfTheRouter(t *testing.T) {
 func TestPlayitTunnelsPerServer(t *testing.T) {
 	for _, c := range []struct {
 		s    Server
+		only string
 		want string
 	}{
-		{Server{}, "udp:minecraft-bedrock"},
-		{Server{Java: true}, "tcp:minecraft-java"},
-		{Server{Java: true, JavaConsoles: true}, "tcp:minecraft-java udp:minecraft-bedrock"},
-		{Server{Hytale: true}, "udp:"},
+		{Server{}, "", "udp:minecraft-bedrock"},
+		{Server{Java: true}, "", "tcp:minecraft-java"},
+		{Server{Java: true, JavaConsoles: true}, "", "tcp:minecraft-java udp:minecraft-bedrock"},
+		{Server{Java: true, JavaConsoles: true}, "tcp", "tcp:minecraft-java"},
+		{Server{Java: true, JavaConsoles: true}, "udp", "udp:minecraft-bedrock"},
+		// The choice only applies to a server with both.
+		{Server{Java: true}, "udp", "tcp:minecraft-java"},
+		{Server{}, "tcp", "udp:minecraft-bedrock"},
+		{Server{Hytale: true}, "", "udp:"},
 	} {
 		var got []string
-		for _, w := range c.s.PlayitTunnels(true) {
+		for _, w := range c.s.PlayitTunnels(true, c.only) {
 			got = append(got, w.Proto+":"+w.Type)
 		}
 		if strings.Join(got, " ") != c.want {
-			t.Errorf("%+v: %v, want %s", c.s, got, c.want)
+			t.Errorf("%+v only %q: %v, want %s", c.s, c.only, got, c.want)
 		}
 	}
 }

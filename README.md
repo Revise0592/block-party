@@ -292,6 +292,11 @@ installing on Unraid.
 - A Java server gets a TCP tunnel, plus a UDP one for console players when
   they're on. A Bedrock or Hytale server gets one UDP tunnel. playit.gg's free
   plan allows 4 TCP and 4 UDP tunnels; the page shows how many are in use.
+- A Java server with console players can keep just one of its two tunnels:
+  **playit.gg tunnels** on its Overview offers Java and Bedrock, Java only,
+  or Bedrock only (console and Bedrock players through Geyser). With Java
+  only, console friends outside can't join, though Geyser still works for
+  consoles at home. Switching back makes a new tunnel, with a new address.
 - Closing a server turns its tunnel off but keeps it, so its address stays
   the same when it's opened again. Deleting the server deletes its tunnel,
   and **Unlink playit.gg** deletes all of the panel's tunnels.

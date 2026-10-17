@@ -2092,6 +2092,7 @@ function renderOverviewOutside(v, id) {
   const actions = [];
   $("ov-outside-problem").hidden = true;
   $("ov-invite-box").hidden = true;
+  $("ov-tunnels").hidden = true;
   if (!v) { $("ov-outside-text").textContent = "Couldn't load this."; $("ov-outside-actions").replaceChildren(); return; }
   if (!v.enabled) {
     $("ov-outside-text").replaceChildren(...(me.owner
@@ -2123,6 +2124,16 @@ function renderOverviewOutside(v, id) {
   const note = notes.filter(Boolean).join(" ");
   $("ov-outside-problem").textContent = note;
   $("ov-outside-problem").hidden = !note;
+  // A Java server with console players can keep just one playit.gg tunnel.
+  if (v.playit && v.playitChoice && care) {
+    $("ov-tunnels").hidden = false;
+    if (document.activeElement !== $("ov-tunnels-select")) $("ov-tunnels-select").value = v.playitOnly || "";
+    $("ov-tunnels-help").textContent = {
+      "": "Java players use one address; Bedrock and console players (through Geyser) use the other. Uses one TCP and one UDP tunnel.",
+      tcp: "Only Java players outside the house can join. Console and Bedrock friends outside can't: they come in through the Bedrock tunnel. Geyser still works for consoles at home.",
+      udp: "Only Bedrock and console players outside the house can join, through Geyser. Java players outside can't.",
+    }[v.playitOnly || ""];
+  }
   if (care) {
     actions.push(btn(v.open ? "Close to friends outside" : "Open to friends outside", async (ev) => {
       const b = ev.currentTarget;
@@ -2153,6 +2164,17 @@ function renderOverviewOutside(v, id) {
   }
   $("ov-outside-actions").replaceChildren(...actions);
 }
+
+$("ov-tunnels-select").addEventListener("change", async (ev) => {
+  const sel = ev.currentTarget;
+  const id = selected;
+  sel.disabled = true;
+  try {
+    const nv = await post(`/api/servers/${encodeURIComponent(id)}/outside/tunnels`, { only: sel.value });
+    if (id === selected) renderOverviewOutside(nv, id);
+  } catch (err) { alert(err.message); }
+  sel.disabled = false;
+});
 
 let outsideDirty = false;
 

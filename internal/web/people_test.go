@@ -307,6 +307,15 @@ func TestOutsideAccessPermissions(t *testing.T) {
 	if !v.Playit || v.Opened || v.Address != "" || !strings.Contains(v.PortError, "isn't linked") {
 		t.Errorf("playit view: %+v", v)
 	}
+	if w := call(h, "POST", "/api/servers/ava/outside/tunnels", `{"only":"tcp"}`, sam); w.Code != 403 {
+		t.Errorf("run-level kid chose tunnels: %d", w.Code)
+	}
+	if w := call(h, "POST", "/api/servers/ava/outside/tunnels", `{"only":"java"}`, ava); w.Code != 400 {
+		t.Errorf("bad tunnel choice: %d %s", w.Code, w.Body)
+	}
+	if w := call(h, "POST", "/api/servers/ava/outside/tunnels", `{"only":"udp"}`, ava); w.Code != 200 || s.out.Playit().Only("ava") != "udp" {
+		t.Errorf("tunnel choice: %d %s", w.Code, w.Body)
+	}
 	if w := call(h, "POST", "/api/outside/playit/claim/check", "", owner); w.Code != 200 || !strings.Contains(w.Body.String(), `"none"`) {
 		t.Errorf("claim check with no claim: %d %s", w.Code, w.Body)
 	}
