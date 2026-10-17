@@ -408,6 +408,13 @@ func TestJavaLinesCantBeFakedInChat(t *testing.T) {
 		"[12:00:05 INFO]: .Kid_One joined the game":                                                       "join .Kid_One",
 		"[12:00:05 INFO]: .Jürgen#12 left the game":                                                       "leave .Jürgen#12",
 		"[12:00:05 INFO]: Disconnecting .Stranger (/1.2.3.4:5): You are not white-listed on this server!": "reject .Stranger",
+		// Paper for Minecraft 26
+		"[11:00:19 INFO]: System chat: LarveyHong joined the game":                                                  "join LarveyHong",
+		"[11:02:40 INFO]: System chat: LarveyHong left the game":                                                    "leave LarveyHong",
+		"[11:37:05 INFO]: System chat: .Larvs1774 joined the game":                                                  "join .Larvs1774",
+		"[11:31:13 INFO]: Disconnecting MrAxolotl_ (/192.168.86.75:40906): You are not whitelisted on this server!": "reject MrAxolotl_",
+		"[12:00:05 INFO]: <Bob> System chat: Alice joined the game":                                                 "",
+		"[12:00:05 INFO]: System chat: <Bob> Alice joined the game":                                                 "",
 	} {
 		got := ""
 		if m := reJavaJoin.FindStringSubmatch(line); m != nil {
