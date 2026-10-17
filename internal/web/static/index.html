@@ -399,14 +399,40 @@
             <input id="outside-enabled" type="checkbox">
             <span>Let friends outside the house join servers that are open to them</span>
           </label>
+          <fieldset>
+            <legend>How they reach the servers</legend>
+            <label class="check">
+              <input type="radio" name="outside-via" id="outside-via-router" value="router">
+              <span>Through the router (port forwarding)</span>
+            </label>
+            <label class="check">
+              <input type="radio" name="outside-via" id="outside-via-playit" value="playit">
+              <span>Through playit.gg (no port forwarding, works behind any router)</span>
+            </label>
+          </fieldset>
+          <div id="outside-router-only">
           <label>Address friends use
             <input id="outside-address" maxlength="253" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="mc.example.com, or leave empty for this home's internet address">
           </label>
           <p class="muted small">A hostname from your own domain or a dynamic DNS service (like DuckDNS) keeps working when your internet address changes. With a fixed address, the IP works too.</p>
           <ul id="outside-facts" class="checklist"></ul>
+          </div>
         </section>
 
-        <section class="card">
+        <section class="card" id="outside-playit-card" hidden>
+          <h2>playit.gg</h2>
+          <p class="muted small">playit.gg is a free service that gives each open server an address on the internet and passes its players through to this panel, so nothing changes on the router. Its free plan has room for 4 TCP and 4 UDP tunnels: a Java server uses one TCP, and one UDP too with console players; a Bedrock or Hytale server uses one UDP.</p>
+          <ul id="playit-facts" class="checklist"></ul>
+          <div class="row" id="playit-actions"></div>
+          <p id="playit-claim" class="small" hidden></p>
+          <div class="table-wrap"><table id="playit-tunnels" class="ports"></table></div>
+          <details id="playit-log-box" hidden>
+            <summary>Agent log</summary>
+            <pre id="playit-log" class="console log"></pre>
+          </details>
+        </section>
+
+        <section class="card" id="outside-router-card">
           <h2>Your router</h2>
           <label class="check">
             <input id="outside-upnp" type="checkbox">
@@ -417,7 +443,7 @@
           <div class="table-wrap"><table id="outside-ports" class="ports"></table></div>
         </section>
 
-        <section class="card">
+        <section class="card" id="outside-consoles-card">
           <h2>Friends on Xbox, PlayStation and Switch</h2>
           <label class="check">
             <input id="outside-consoles" type="checkbox">

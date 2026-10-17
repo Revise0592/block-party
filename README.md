@@ -58,7 +58,9 @@ PS5, and the panel runs a family's servers day to day. See the
 - **Friends outside the house.** Open a server to friends who don't live
   there: the panel finds your internet address, opens the router's ports with
   UPnP (or lists the forwards to add by hand), and writes an invite that tells
-  a friend how to join from a PC, phone or console. See
+  a friend how to join from a PC, phone or console. Behind a router you can't
+  forward ports on, use [playit.gg](https://playit.gg) instead: the panel
+  runs its agent and gives each open server its own address. See
   [Friends outside the house](#friends-outside-the-house).
 - **Java Edition servers (Paper).** Add a server and pick Java: the panel
   downloads Paper and the Java it needs, and Java servers get the same
@@ -271,6 +273,32 @@ the allowlist.
 Consoles outside only see the servers open to them in the list, and are sent
 to your hostname. The panel re-checks everything every minute, and closes the
 forwards it made when it stops.
+
+#### Through playit.gg instead of the router
+
+If you can't (or would rather not) forward ports, for example because your
+internet provider shares your address, choose **Through playit.gg** under
+**How they reach the servers** and save. Then click **Link playit.gg**:
+playit.gg opens in a new tab, you sign in (a free account is enough) and
+approve Block Party, and the page notices on its own. Nothing to copy.
+
+From then on, opening a server to friends outside gives it a playit.gg
+address (like `something.gl.joinmc.link:12345`), shown on its Overview and in
+the invite. The panel downloads playit's official agent (pinned to one
+version and checked against its published hash) into `/data/playit`, and runs
+it inside the container while a server is open, so nothing else needs
+installing on Unraid.
+
+- A Java server gets a TCP tunnel, plus a UDP one for console players when
+  they're on. A Bedrock or Hytale server gets one UDP tunnel. playit.gg's free
+  plan allows 4 TCP and 4 UDP tunnels; the page shows how many are in use.
+- Closing a server turns its tunnel off but keeps it, so its address stays
+  the same when it's opened again. Deleting the server deletes its tunnel,
+  and **Unlink playit.gg** deletes all of the panel's tunnels.
+- Console friends join with the BedrockConnect steps in the invite (the
+  home's own console server list isn't offered outside with playit.gg).
+- The agent's latest log lines are under **Agent log**, if something isn't
+  working.
 
 ### Java servers
 
@@ -556,6 +584,7 @@ apply without a restart.
 | `PUBLIC_IP` | empty | This home's internet address, if you'd rather set it than have the panel look it up |
 | `PUBLIC_IP_LOOKUP` | ipify, icanhazip, ifconfig.me | Where the panel asks for this home's internet address (comma-separated URLs), or `off` |
 | `UPNP_GATEWAY` | empty | The router's UPnP description URL, if searching the network doesn't find it |
+| `PLAYIT_AGENT` | empty | Run this playit.gg agent instead of downloading playit's (for testing) |
 | `DNS_ANSWER_INTERNET` | `false` | Older setting: always answer the featured names for consoles on the internet (with `PUBLIC_IP`). The **Friends on Xbox, PlayStation and Switch** switch does this now |
 | `CONNECTION` | `raknet` | `raknet`, `nethernet` or `both` |
 | `NETHERNET_NAMES` | empty | With `both`, offer NetherNet only for these names |

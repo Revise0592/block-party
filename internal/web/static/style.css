@@ -259,6 +259,7 @@ textarea { width: 100%; font: 12.5px/1.45 var(--mono); background: var(--console
 /* console */
 .console { background: var(--console-bg); color: var(--console-text); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; height: 55vh; overflow: auto; font: 12.5px/1.6 var(--mono); white-space: pre-wrap; word-break: break-word; margin: 0 0 8px; }
 .console.mini { height: 190px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; }
+.console.log { height: 220px; }
 .console .panel { color: #8fd19a; } .console .cmd { color: #9ec5ff; } .console .warn { color: #f0c36b; } .console .err { color: #ff8f86; }
 
 /* setup guide */
