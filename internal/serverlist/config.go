@@ -122,6 +122,8 @@ type Server struct {
 	Address string `json:"address"`
 	Port    uint16 `json:"port"`
 	IconURL string `json:"iconUrl,omitempty"`
+	// NetherNetPort: see PanelServer (not read from servers.json).
+	NetherNetPort uint16 `json:"-"`
 }
 
 // defaultRedirectNames are the featured-server hostnames consoles look up.
@@ -208,7 +210,7 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	maxP, err := envInt("RTC_PORT_MAX", 19399)
+	maxP, err := envInt("RTC_PORT_MAX", 19319)
 	if err != nil {
 		return nil, err
 	}
@@ -217,8 +219,10 @@ func LoadConfig() (*Config, error) {
 	}
 	c.RTCPortMin, c.RTCPortMax = uint16(minP), uint16(maxP)
 
-	// CONNECTION picks what consoles are offered. The first build used
-	// SIGNALING=off and RAKNET=false for this, so those still work.
+	// CONNECTION picks what consoles are offered. Both by default: Minecraft
+	// 26.60 (27 October 2026) stops connecting over RakNet, and consoles on
+	// older versions still use it. The first build used SIGNALING=off and
+	// RAKNET=false for this, so those still work.
 	c.Connection = strings.ToLower(env("CONNECTION", ""))
 	if c.Connection == "" {
 		switch {
@@ -226,10 +230,8 @@ func LoadConfig() (*Config, error) {
 			c.Connection = "raknet"
 		case !envBool("RAKNET", true):
 			c.Connection = "nethernet"
-		case os.Getenv("SIGNALING") != "":
-			c.Connection = "both"
 		default:
-			c.Connection = "raknet"
+			c.Connection = "both"
 		}
 	}
 	switch c.Connection {
@@ -376,6 +378,10 @@ type PanelServer struct {
 	Name    string
 	Port    int
 	Running bool
+	// NetherNetPort, when not 0, is where consoles that reached the list
+	// over NetherNet are sent instead of Port (a Java server's Geyser can't
+	// take NetherNet on the Java server's own TCP port).
+	NetherNetPort int
 }
 
 func loadServers(path string) ([]Server, error) {

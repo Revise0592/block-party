@@ -53,11 +53,11 @@ answers.
 
 ## Why these defaults
 
-- **`CONNECTION=raknet`**: the only connection type consoles complete through
-  a redirect today.
-- **NetherNet stays built in** behind `CONNECTION=nethernet|both` and
-  `NETHERNET_NAMES`, so it can be re-tested after Minecraft updates without a
-  new build. If consoles ever drop RakNet for featured servers, the redirect
+- **`CONNECTION=both`** (since 1.1.0): Minecraft 26.60 (October 27, 2026)
+  stops joining servers over RakNet, so the list takes NetherNet as well.
+  Consoles still find it under LAN Games with a RakNet search on 19132.
+  `NETHERNET_NAMES` can limit NetherNet to some featured-server names, so it
+  can be re-tested after Minecraft updates without a new build. If consoles ever drop RakNet for featured servers, the redirect
   stops working for every tool, BedrockConnect included. The design's fallback
   is LAN broadcast and Friends-tab broadcast, which don't depend on it.
 - **Terrain goes out right after the view distance is agreed.** In build 1 the

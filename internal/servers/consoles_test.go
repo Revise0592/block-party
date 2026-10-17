@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -64,7 +65,20 @@ func TestJavaConsoles(t *testing.T) {
 	if !st.Consoles || !st.ConsolesLive || st.ConsolesUpdate {
 		t.Errorf("status: %+v", st)
 	}
-	waitConsole(t, s, fmt.Sprintf("-DgeyserUdpPort=%d", st.Port))
+	waitConsole(t, s, fmt.Sprintf("-DgeyserUdpPort=%d -DgeyserTransport=both -DgeyserSignalingPort=%d -DgeyserWebrtcPort=%d", st.Port, st.Port+1, st.Port+1))
+	// The console menu sends consoles that came over NetherNet to Geyser's
+	// NetherNet port.
+	if j := m.Joinable(); len(j) != 1 || j[0].Port != st.Port || j[0].NetherNetPort != st.Port+1 {
+		t.Errorf("joinable: %+v", j)
+	}
+	m.SetHostAddresses(func() HostAddresses { return HostAddresses{Home: "10.0.1.117", Internet: "203.0.113.7"} })
+	s.mu.Lock()
+	_, args, err := s.javaCommand()
+	s.mu.Unlock()
+	if err != nil || !slices.Contains(args, fmt.Sprintf("-DgeyserAdvertiseAddresses=10.0.1.117:%d,203.0.113.7:%d", st.Port+1, st.Port+1)) {
+		t.Errorf("advertised addresses: %v %v", args, err)
+	}
+	m.SetHostAddresses(nil)
 	// The owner's gamertag went on the lists before the first start, with
 	// the account ID Floodgate gives them.
 	if wl := readFile(t, s.whitelistPath()); !strings.Contains(wl, `".Dad_Gamer"`) || !strings.Contains(wl, "00000000-0000-0000-0009-01eed05d1001") {

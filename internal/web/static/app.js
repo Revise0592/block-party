@@ -2064,7 +2064,7 @@ function inviteText(v, name) {
   if (v.java) lines.push("On a PC or Mac with Minecraft: Java Edition:", ...javaLines.map((l) => l && "  " + l));
   lines.push(v.java ? "On a phone, tablet or Windows (Minecraft Bedrock): go to Play, then Servers, then Add Server, and type"
     : "On a PC, phone or tablet: open Minecraft, go to Play, then Servers, then Add Server, and type",
-    `  Server address: ${v.address}`, `  Port: ${v.port}`, "");
+    `  Server address: ${v.address}`, `  Port: ${v.bedrockPort || v.port}`, "");
   lines.push("On an Xbox, PlayStation or Switch (they can't type an address):");
   if (v.consoles && v.consoleDNS) {
     lines.push(`  1. In the console's network settings, set the DNS by hand: primary ${v.consoleDNS}, secondary 1.1.1.1.`,
@@ -2076,7 +2076,7 @@ function inviteText(v, name) {
   lines.push("  1. Set the DNS by hand: primary 104.238.130.180 (PlayStation: 45.55.68.52), secondary 8.8.8.8.",
     "     (That's BedrockConnect, a free public server list.)",
     "  2. Restart the console, open Minecraft, go to Servers and join any featured server.",
-    `  3. Choose "Connect to a Server" and type ${v.address} and port ${v.port}.`, "",
+    `  3. Choose "Connect to a Server" and type ${v.address} and port ${v.bedrockPort || v.port}.`, "",
     v.java ? "Send me your gamertag (or Java username) first so I can put you on the allowlist."
       : "Send me your gamertag first so I can put you on the allowlist.");
   return lines.join("\n");
@@ -2106,10 +2106,10 @@ function renderOverviewOutside(v, id) {
   if (v.problem) notes.push(`It can't be reached while ${v.problem}. Turn it back on (Players or Settings tab).`);
   if (v.open && v.shared) notes.push("Your internet provider (or a second router) shares this home's address, so friends can't reach it. See Friends outside the house.");
   if (v.open && !v.problem && !v.opened && me.owner) {
-    const proto = v.java ? (v.javaConsoles ? "TCP and UDP" : "TCP") : "UDP";
+    const fw = (v.forwards || []).join(", ");
     notes.push(v.upnp && v.portError
-      ? `The router didn't open port ${v.port}: ${v.portError}. Forward ${proto} ${v.port} to this panel by hand.`
-      : (v.upnp ? "" : `Forward ${proto} port ${v.port} to this panel in your router (see Friends outside the house).`));
+      ? `The router didn't open port ${v.port}: ${v.portError}. Forward ${fw} to this panel by hand.`
+      : (v.upnp ? "" : `Forward ${fw} to this panel in your router (see Friends outside the house).`));
   }
   const note = notes.filter(Boolean).join(" ");
   $("ov-outside-problem").textContent = note;
@@ -2187,11 +2187,21 @@ function renderOutside(st) {
   else if (st.router) { r.textContent = `Router: ${st.router}.`; r.className = "small ok"; }
   else { r.textContent = st.routerError || (set.enabled ? "Looking for the router…" : ""); r.className = "small warn"; }
 
-  const ports = st.ports || [];
+  // Runs of ports next to each other with the same type, use and state are
+  // one row ("49152-49171").
+  const ports = [];
+  for (const p of st.ports || []) {
+    const last = ports[ports.length - 1];
+    if (last && last.proto === p.proto && last.for === p.for && last.opened === p.opened && last.error === p.error && last.to + 1 === p.port) {
+      last.to = p.port;
+    } else {
+      ports.push({ ...p, to: p.port });
+    }
+  }
   $("outside-ports").replaceChildren(...(ports.length
     ? [el("tr", {}, el("th", {}, "Port"), el("th", {}, "Type"), el("th", {}, "Forward to"), el("th", {}, "For"), el("th", {}, "Router")),
       ...ports.map((p) => el("tr", {},
-        el("td", { class: "mono" }, String(p.port)), el("td", {}, p.proto), el("td", { class: "mono" }, st.localIP), el("td", {}, p.for),
+        el("td", { class: "mono", style: "white-space: nowrap" }, p.to > p.port ? `${p.port}-${p.to}` : String(p.port)), el("td", {}, p.proto), el("td", { class: "mono" }, st.localIP), el("td", {}, p.for),
         el("td", { class: p.opened ? "ok" : (p.error ? "warn" : "muted") }, p.opened ? "Opened" : (set.upnp ? (p.error || "…") : "Forward by hand"))))]
     : [el("tr", {}, el("td", { class: "muted" }, set.enabled ? "Nothing to forward yet: no server is open to friends outside." : "Nothing is forwarded while outside access is off."))]));
 

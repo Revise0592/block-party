@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
 	"time"
@@ -31,7 +32,7 @@ func OutsideServers(mgr *servers.Manager) func() []outside.Server {
 			if !ok {
 				continue
 			}
-			s := outside.Server{ID: st.ID, Name: st.Name, Port: st.Port, Open: st.Outside, Java: st.Type == servers.TypeJava, JavaConsoles: st.Consoles}
+			s := outsideServer(st)
 			if st.Outside {
 				s.Problem = srv.OutsideProblem()
 			}
@@ -39,6 +40,43 @@ func OutsideServers(mgr *servers.Manager) func() []outside.Server {
 		}
 		return list
 	}
+}
+
+// outsideServer is a server as the outside package sees it: which ports it
+// needs forwarded.
+func outsideServer(st servers.Status) outside.Server {
+	s := outside.Server{ID: st.ID, Name: st.Name, Port: st.Port, Open: st.Outside}
+	switch st.Type {
+	case servers.TypeJava:
+		s.Java, s.JavaConsoles = true, st.Consoles
+		if st.Consoles {
+			s.NetherNetPort = servers.GeyserNetherNetPort(st.Port)
+		}
+	case servers.TypeHytale:
+	default:
+		first, last := servers.BedrockUDPPorts(st.Port)
+		s.Bedrock, s.UDPPorts = true, [2]int{first, last}
+	}
+	return s
+}
+
+// forwardsText describes forwards for people, ranges joined up:
+// "TCP 19136", "UDP 49152-49171".
+func forwardsText(ports []outside.Port) []string {
+	var out []string
+	for i := 0; i < len(ports); {
+		j := i
+		for j+1 < len(ports) && ports[j+1].Proto == ports[i].Proto && ports[j+1].Port == ports[j].Port+1 {
+			j++
+		}
+		if j > i {
+			out = append(out, fmt.Sprintf("%s %d-%d", ports[i].Proto, ports[i].Port, ports[j].Port))
+		} else {
+			out = append(out, fmt.Sprintf("%s %d", ports[i].Proto, ports[i].Port))
+		}
+		i = j + 1
+	}
+	return out
 }
 
 // refresh works outside access out again, waiting a little for the answer.
@@ -97,6 +135,11 @@ type serverOutsideView struct {
 	// JavaConsoles: a Java server consoles can join too (same port, UDP).
 	JavaConsoles bool `json:"javaConsoles,omitempty"`
 	Hytale       bool `json:"hytale,omitempty"`
+	// BedrockPort is the port Bedrock players type (a Java server's takes
+	// NetherNet, which Minecraft 26.60 and later use, on the next port up).
+	BedrockPort int `json:"bedrockPort,omitempty"`
+	// Forwards are the forwards it needs, for setting up by hand.
+	Forwards []string `json:"forwards,omitempty"`
 }
 
 func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsideView {
@@ -108,7 +151,12 @@ func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsi
 	}
 	v.JavaConsoles = v.Java && ss.Consoles
 	v.Hytale = ss.Type == servers.TypeHytale
-	protos := outside.Server{Java: v.Java, JavaConsoles: v.JavaConsoles}.Protocols()
+	need := outsideServer(ss).Forwards()
+	v.Forwards = forwardsText(need)
+	v.BedrockPort = ss.Port
+	if v.JavaConsoles {
+		v.BedrockPort = servers.GeyserNetherNetPort(ss.Port)
+	}
 	// The address consoles outside use as their DNS: where the address
 	// friends use leads (it's never a home address; see outside).
 	v.ConsoleDNS = st.PublicIP
@@ -123,10 +171,10 @@ func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsi
 			v.Reached = x.Reached && v.Problem == ""
 		}
 	}
-	// Opened only when every protocol it needs is.
+	// Opened only when every forward it needs is.
 	opened := 0
 	for _, p := range st.Ports {
-		if p.Port.Port != ss.Port || !slices.Contains(protos, p.Proto) {
+		if !slices.ContainsFunc(need, func(n outside.Port) bool { return n.Port == p.Port.Port && n.Proto == p.Proto }) {
 			continue
 		}
 		if p.Opened {
@@ -136,7 +184,7 @@ func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsi
 			v.PortError = p.Error
 		}
 	}
-	v.Opened = opened == len(protos)
+	v.Opened = opened == len(need)
 	return v
 }
 

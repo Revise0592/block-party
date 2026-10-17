@@ -99,9 +99,6 @@ func main() {
 		slog.Error("could not read the servers folder", "error", err)
 		os.Exit(1)
 	}
-	mgr.StartAutoStart()
-	mgr.RunBackupSchedule()
-	mgr.RunHytaleKeepAlive()
 	zone, _ := time.Now().Zone()
 	slog.Info("scheduled backups use the container's time zone; set TZ to change it", "timeZone", time.Local.String(), "abbrev", zone, "now", time.Now().Format("15:04"))
 
@@ -109,7 +106,7 @@ func main() {
 	cfg.PanelServers = func() []serverlist.PanelServer {
 		var out []serverlist.PanelServer
 		for _, j := range mgr.Joinable() {
-			out = append(out, serverlist.PanelServer{Name: j.Name, Port: j.Port, Running: j.Running})
+			out = append(out, serverlist.PanelServer{Name: j.Name, Port: j.Port, Running: j.Running, NetherNetPort: j.NetherNetPort})
 		}
 		return out
 	}
@@ -130,15 +127,42 @@ func main() {
 		dnsPort = cfg.DNSPort
 	}
 	out := outside.New(outside.Options{
-		DataDir:    cfg.DataDir,
-		LocalIP:    cfg.ListIP,
-		ListPort:   cfg.ListPort,
+		DataDir:  cfg.DataDir,
+		LocalIP:  cfg.ListIP,
+		ListPort: cfg.ListPort,
+		ListUDPPorts: func() [2]int {
+			if !cfg.NetherNet {
+				return [2]int{}
+			}
+			return [2]int{int(cfg.RTCPortMin), int(cfg.RTCPortMax)}
+		}(),
 		DNSPort:    dnsPort,
 		StaticIP:   cfg.PublicIP,
 		LookupURLs: lookups,
 		GatewayURL: os.Getenv("UPNP_GATEWAY"),
 		Servers:    web.OutsideServers(mgr),
 	})
+	// Game servers tell consoles where to connect over NetherNet: here at
+	// home, and at the home's internet address while friends outside can
+	// join. Set before any server starts.
+	mgr.SetHostAddresses(func() servers.HostAddresses {
+		h := servers.HostAddresses{Home: cfg.ListIP.String()}
+		if i := out.Info(); i.Enabled && i.IP.IsValid() {
+			h.Internet = i.IP.String()
+		}
+		return h
+	})
+	// With friends outside, work out the internet address before servers
+	// start, so they tell consoles outside where to connect.
+	if out.Settings().Enabled {
+		c, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		out.Refresh(c)
+		cancel()
+	}
+	mgr.StartAutoStart()
+	mgr.RunBackupSchedule()
+	mgr.RunHytaleKeepAlive()
+
 	cfg.OutsideInfo = func() serverlist.Outside {
 		i := out.Info()
 		return serverlist.Outside{Enabled: i.Enabled, Host: i.Host, IP: i.IP, Consoles: i.Consoles, Open: i.Open}

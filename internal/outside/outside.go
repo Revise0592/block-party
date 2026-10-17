@@ -53,20 +53,45 @@ type Server struct {
 	Open    bool   // the server is marked open to friends outside
 	Problem string // why it can't be open right now ("the allowlist is off"), or ""
 	Java    bool   // a Java server: its port is TCP
-	// JavaConsoles: a Java server that also takes console players (Geyser),
-	// on the same port number over UDP.
-	JavaConsoles bool
+	// JavaConsoles: a Java server that also takes console players (Geyser):
+	// RakNet on the same port number over UDP, NetherNet on NetherNetPort
+	// (TCP and UDP).
+	JavaConsoles  bool
+	NetherNetPort int
+	// Bedrock: a Bedrock server. NetherNet signaling is TCP on its port,
+	// gameplay UDP on UDPPorts (first and last); RakNet is UDP on its port.
+	Bedrock  bool
+	UDPPorts [2]int
 }
 
-// Protocols returns the protocols the server's port needs forwarded.
-func (s Server) Protocols() []string {
-	switch {
-	case s.Java && s.JavaConsoles:
-		return []string{"TCP", "UDP"}
-	case s.Java:
-		return []string{"TCP"}
+// Forwards returns the forwards the server needs.
+func (s Server) Forwards() []Port {
+	var out []Port
+	add := func(port int, proto string) {
+		if port > 0 {
+			out = append(out, Port{Port: port, Proto: proto, For: s.Name})
+		}
 	}
-	return []string{"UDP"}
+	switch {
+	case s.Java:
+		add(s.Port, "TCP")
+		if s.JavaConsoles {
+			add(s.Port, "UDP")
+			add(s.NetherNetPort, "TCP")
+			add(s.NetherNetPort, "UDP")
+		}
+	case s.Bedrock:
+		add(s.Port, "UDP")
+		add(s.Port, "TCP")
+		if s.UDPPorts[0] > 0 {
+			for p := s.UDPPorts[0]; p <= s.UDPPorts[1]; p++ {
+				add(p, "UDP")
+			}
+		}
+	default: // Hytale
+		add(s.Port, "UDP")
+	}
+	return out
 }
 
 // Port is one forward on the router.
@@ -134,7 +159,10 @@ type Options struct {
 	DataDir  string
 	LocalIP  netip.Addr // this container's address on the home network
 	ListPort int        // the console server list (19132)
-	DNSPort  int        // the built-in DNS (53); 0 when it's off
+	// ListUDPPorts is the console server list's NetherNet gameplay range
+	// (first and last), forwarded with it for friends' consoles.
+	ListUDPPorts [2]int
+	DNSPort      int // the built-in DNS (53); 0 when it's off
 	// StaticIP is the home's address when it's set by hand (PUBLIC_IP).
 	StaticIP netip.Addr
 	// LookupURLs answer with the caller's internet address as plain text.
@@ -389,14 +417,19 @@ func (m *Manager) reconcile(ctx context.Context) {
 		if s.Open && s.Problem == "" && set.Enabled {
 			ss.Reached = true
 			open[s.Port] = true
-			for _, proto := range s.Protocols() {
-				want = append(want, Port{Port: s.Port, Proto: proto, For: s.Name})
-			}
+			want = append(want, s.Forwards()...)
 		}
 		st.Servers = append(st.Servers, ss)
 	}
 	if set.Enabled && set.Consoles {
-		want = append(want, Port{Port: m.opts.ListPort, Proto: "UDP", For: "console server list"})
+		// RakNet (UDP) and NetherNet (TCP signaling, UDP gameplay).
+		want = append(want, Port{Port: m.opts.ListPort, Proto: "UDP", For: "console server list"},
+			Port{Port: m.opts.ListPort, Proto: "TCP", For: "console server list"})
+		if r := m.opts.ListUDPPorts; r[0] > 0 {
+			for p := r[0]; p <= r[1]; p++ {
+				want = append(want, Port{Port: p, Proto: "UDP", For: "console server list"})
+			}
+		}
 		if m.opts.DNSPort > 0 {
 			want = append(want, Port{Port: m.opts.DNSPort, Proto: "UDP", For: "console DNS"},
 				Port{Port: m.opts.DNSPort, Proto: "TCP", For: "console DNS"})

@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.1.0
+
+Ready for Minecraft 26.60 (October 27, 2026), which joins servers over
+NetherNet instead of RakNet.
+
+- **Consoles on Java servers**: Geyser now takes NetherNet as well as RakNet,
+  on the server's port + 1 (TCP and UDP). The console server list sends
+  NetherNet players there, and the invite tells friends which port to type.
+  Restart Java servers with console players to pick it up.
+- **Bedrock servers** get a fixed block of 20 UDP ports for NetherNet
+  (from 49152), so they can be forwarded for friends outside, and tell
+  players outside the home's internet address.
+- **The console server list** takes NetherNet as well as RakNet
+  (`CONNECTION` now defaults to `both`), on UDP 19300-19319.
+- **Friends outside the house** forwards everything NetherNet needs, and
+  lists the forwards to add by hand, with ranges kept to one line.
+
 ## 1.0.0
 
 The first release of Block Party: one container that runs a family's game

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/ScottSchneck/block-party/internal/auth"
+	"github.com/ScottSchneck/block-party/internal/outside"
 	"github.com/ScottSchneck/block-party/internal/servers"
 )
 
@@ -417,5 +418,17 @@ func TestServerLogQuietsHandshakes(t *testing.T) {
 	l.Write([]byte("http: panic serving 1.2.3.4: boom\n"))
 	if !strings.Contains(buf.String(), "level=WARN") || !strings.Contains(buf.String(), "panic serving") {
 		t.Errorf("other messages lost: %q", buf.String())
+	}
+}
+
+func TestForwardsText(t *testing.T) {
+	ports := outside.Server{Name: "B", Port: 19136, Bedrock: true, UDPPorts: [2]int{49202, 49221}}.Forwards()
+	got := strings.Join(forwardsText(ports), ", ")
+	if got != "UDP 19136, TCP 19136, UDP 49202-49221" {
+		t.Errorf("bedrock: %q", got)
+	}
+	ports = outsideServer(servers.Status{Type: servers.TypeJava, Port: 19138, Consoles: true}).Forwards()
+	if got := strings.Join(forwardsText(ports), ", "); got != "TCP 19138, UDP 19138, TCP 19139, UDP 19139" {
+		t.Errorf("java: %q", got)
 	}
 }

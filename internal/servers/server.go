@@ -1075,7 +1075,19 @@ func (s *Server) applyPanelProperties(fresh bool) error {
 	// The console server list answers LAN searches on port 19132 for the
 	// whole container; a game server doing the same would clash with it.
 	p.set("enable-lan-visibility", "false")
-	p.setIfPresent("server-udp-ports", udpRange(s.meta.Port))
+	// NetherNet gameplay ports: a fixed range per server (Mojang's file has
+	// the line commented out, so ports would otherwise be random), and,
+	// while friends outside can join, the same range at the home's internet
+	// address, so their consoles are told where to connect.
+	first, last := BedrockUDPPorts(s.meta.Port)
+	ports := fmt.Sprintf("%d-%d", first, last)
+	if ip := s.m.hostAddresses().Internet; ip != "" {
+		if strings.Contains(ip, ":") {
+			ip = "[" + ip + "]"
+		}
+		ports += fmt.Sprintf(",%s:%d-%d:%d-%d", ip, first, last, first, last)
+	}
+	p.set("server-udp-ports", ports)
 	if strings.Join(p.lines, "\n") == before {
 		return nil
 	}
