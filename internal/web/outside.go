@@ -4,9 +4,11 @@ import (
 	"context"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/ScottSchneck/block-party/internal/outside"
+	"github.com/ScottSchneck/block-party/internal/playit"
 	"github.com/ScottSchneck/block-party/internal/servers"
 )
 
@@ -18,6 +20,9 @@ func (s *Server) outsideRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/outside", ownerOnly(s.getOutside))
 	mux.HandleFunc("PUT /api/outside", ownerOnly(s.putOutside))
 	mux.HandleFunc("POST /api/outside/check", ownerOnly(s.checkOutside))
+	mux.HandleFunc("POST /api/outside/playit/claim", ownerOnly(s.startPlayitClaim))
+	mux.HandleFunc("POST /api/outside/playit/claim/check", ownerOnly(s.checkPlayitClaim))
+	mux.HandleFunc("DELETE /api/outside/playit", ownerOnly(s.unlinkPlayit))
 	mux.HandleFunc("GET /api/servers/{id}/outside", s.withServer(levelRun, s.serverOutside))
 	mux.HandleFunc("POST /api/servers/{id}/outside", s.withServer(levelCare, s.setServerOutside))
 }
@@ -31,7 +36,7 @@ func OutsideServers(mgr *servers.Manager) func() []outside.Server {
 			if !ok {
 				continue
 			}
-			s := outside.Server{ID: st.ID, Name: st.Name, Port: st.Port, Open: st.Outside, Java: st.Type == servers.TypeJava, JavaConsoles: st.Consoles}
+			s := outside.Server{ID: st.ID, Name: st.Name, Port: st.Port, Open: st.Outside, Java: st.Type == servers.TypeJava, JavaConsoles: st.Consoles, Hytale: st.Type == servers.TypeHytale}
 			if st.Outside {
 				s.Problem = srv.OutsideProblem()
 			}
@@ -77,6 +82,43 @@ func (s *Server) checkOutside(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.refreshOutside(r))
 }
 
+// Linking playit.gg: the owner approves the panel on playit.gg (the page
+// opens in a new tab) while the panel asks whether they have.
+
+func (s *Server) startPlayitClaim(w http.ResponseWriter, r *http.Request) {
+	url, err := s.out.Playit().StartClaim(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"url": url})
+}
+
+func (s *Server) checkPlayitClaim(w http.ResponseWriter, r *http.Request) {
+	state, err := s.out.Playit().CheckClaim(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	if state == playit.ClaimLinked {
+		s.note(r, nil, "linked a playit.gg account")
+		writeJSON(w, http.StatusOK, map[string]any{"state": state, "outside": s.refreshOutside(r)})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"state": state})
+}
+
+func (s *Server) unlinkPlayit(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	if err := s.out.Playit().Unlink(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.note(r, nil, "unlinked playit.gg")
+	writeJSON(w, http.StatusOK, s.refreshOutside(r))
+}
+
 // serverOutsideView is what a server's page shows about friends outside.
 type serverOutsideView struct {
 	Open     bool   `json:"open"`    // marked open
@@ -97,6 +139,12 @@ type serverOutsideView struct {
 	// JavaConsoles: a Java server consoles can join too (same port, UDP).
 	JavaConsoles bool `json:"javaConsoles,omitempty"`
 	Hytale       bool `json:"hytale,omitempty"`
+	// Playit: friends come in through playit.gg. Address and Port are then
+	// the server's playit.gg address; a Java server with consoles has a
+	// second one for them (Bedrock, over UDP).
+	Playit         bool   `json:"playit,omitempty"`
+	ConsoleAddress string `json:"consoleAddress,omitempty"`
+	ConsolePort    int    `json:"consolePort,omitempty"`
 }
 
 func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsideView {
@@ -137,7 +185,34 @@ func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsi
 		}
 	}
 	v.Opened = opened == len(protos)
+	if st.Settings.Playit {
+		s.playitView(&v, ss.ID, protos)
+	}
 	return v
+}
+
+// playitView fills in a server's playit.gg addresses. The first protocol's
+// tunnel is the main address (Java's, on a Java server).
+func (s *Server) playitView(v *serverOutsideView, id string, protos []string) {
+	v.Playit, v.UPnP, v.Shared, v.Consoles, v.ConsoleDNS = true, false, false, false, ""
+	v.Address, v.Port, v.Opened, v.PortError = "", 0, true, ""
+	for i, proto := range protos {
+		t, ok := s.out.Playit().Tunnel(id, strings.ToLower(proto))
+		if !ok || !t.Ready {
+			v.Opened = false
+		}
+		if v.PortError == "" && ok {
+			v.PortError = t.Problem
+		}
+		if i == 0 {
+			v.Address, v.Port = t.Address, t.PublicPort
+		} else if t.Address != "" {
+			v.ConsoleAddress, v.ConsolePort = t.Address, t.PublicPort
+		}
+	}
+	if !s.out.Playit().Linked() {
+		v.Opened, v.PortError = false, "playit.gg isn't linked yet"
+	}
 }
 
 func (s *Server) serverOutside(w http.ResponseWriter, r *http.Request, srv *servers.Server) {

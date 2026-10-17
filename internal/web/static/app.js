@@ -236,7 +236,7 @@ async function loadDashOutside() {
     const open = (st.servers || []).filter((x) => x.reached).length;
     $("dash-outside-text").textContent = !st.settings.enabled
       ? "Off. Friends who don't live here can't join."
-      : `On · ${open} server${open === 1 ? "" : "s"} open to them` + (st.address ? ` at ${st.address}` : "") + ".";
+      : `On${st.settings.playit ? " through playit.gg" : ""} · ${open} server${open === 1 ? "" : "s"} open to them` + (st.address && !st.settings.playit ? ` at ${st.address}` : "") + ".";
   } catch (_) { /* shown on the page itself */ }
 }
 
@@ -2060,11 +2060,15 @@ function inviteText(v, name) {
     return [`Come play on "${name}" with me in Minecraft: Java Edition!`, "", ...javaLines,
       "Send me your Minecraft Java username first so I can put you on the allowlist."].join("\n");
   }
+  // Through playit.gg, console players on a Java server have their own
+  // address (Geyser's tunnel).
+  const bAddr = v.playit && v.java ? (v.consoleAddress || "(not ready yet)") : v.address;
+  const bPort = v.playit && v.java ? (v.consolePort || "") : v.port;
   const lines = [`Come play on "${name}" with me in Minecraft!`, ""];
   if (v.java) lines.push("On a PC or Mac with Minecraft: Java Edition:", ...javaLines.map((l) => l && "  " + l));
   lines.push(v.java ? "On a phone, tablet or Windows (Minecraft Bedrock): go to Play, then Servers, then Add Server, and type"
     : "On a PC, phone or tablet: open Minecraft, go to Play, then Servers, then Add Server, and type",
-    `  Server address: ${v.address}`, `  Port: ${v.port}`, "");
+    `  Server address: ${bAddr}`, `  Port: ${bPort}`, "");
   lines.push("On an Xbox, PlayStation or Switch (they can't type an address):");
   if (v.consoles && v.consoleDNS) {
     lines.push(`  1. In the console's network settings, set the DNS by hand: primary ${v.consoleDNS}, secondary 1.1.1.1.`,
@@ -2076,7 +2080,7 @@ function inviteText(v, name) {
   lines.push("  1. Set the DNS by hand: primary 104.238.130.180 (PlayStation: 45.55.68.52), secondary 8.8.8.8.",
     "     (That's BedrockConnect, a free public server list.)",
     "  2. Restart the console, open Minecraft, go to Servers and join any featured server.",
-    `  3. Choose "Connect to a Server" and type ${v.address} and port ${v.port}.`, "",
+    `  3. Choose "Connect to a Server" and type ${bAddr} and port ${bPort}.`, "",
     v.java ? "Send me your gamertag (or Java username) first so I can put you on the allowlist."
       : "Send me your gamertag first so I can put you on the allowlist.");
   return lines.join("\n");
@@ -2096,16 +2100,21 @@ function renderOverviewOutside(v, id) {
     $("ov-outside-actions").replaceChildren();
     return;
   }
-  if (v.open) {
+  if (v.open && v.playit && !v.address) {
+    $("ov-outside-text").textContent = v.reached ? "Open through playit.gg. Its address is on its way." : "Marked open, but friends can't join right now.";
+  } else if (v.open) {
     $("ov-outside-text").replaceChildren(v.reached ? "Open: friends on the allowlist can join from anywhere at " : "Marked open, but friends can't join right now. Address: ",
-      el("b", { class: "mono" }, `${v.address}:${v.port}`), ".");
+      el("b", { class: "mono" }, `${v.address}:${v.port}`),
+      ...(v.consoleAddress ? [" (consoles and Bedrock: ", el("b", { class: "mono" }, `${v.consoleAddress}:${v.consolePort}`), ")"] : []), ".");
   } else {
     $("ov-outside-text").textContent = "Closed: only people in the house can join.";
   }
   const notes = [];
   if (v.problem) notes.push(`It can't be reached while ${v.problem}. Turn it back on (Players or Settings tab).`);
   if (v.open && v.shared) notes.push("Your internet provider (or a second router) shares this home's address, so friends can't reach it. See Friends outside the house.");
-  if (v.open && !v.problem && !v.opened && me.owner) {
+  if (v.open && v.playit && !v.problem && !v.opened) {
+    notes.push(v.portError ? `playit.gg: ${v.portError}` : "playit.gg is setting it up…");
+  } else if (v.open && !v.problem && !v.opened && me.owner) {
     const proto = v.java ? (v.javaConsoles ? "TCP and UDP" : "TCP") : "UDP";
     notes.push(v.upnp && v.portError
       ? `The router didn't open port ${v.port}: ${v.portError}. Forward ${proto} ${v.port} to this panel by hand.`
@@ -2163,6 +2172,17 @@ async function loadOutside(check) {
 
 function fact(ok, text) { return checkItem(ok, text); }
 
+function outsideViaPlayit() { return $("outside-via-playit").checked; }
+
+// Router settings or playit.gg's, as chosen (before it's saved too).
+function applyOutsideVia() {
+  const p = outsideViaPlayit();
+  $("outside-router-only").hidden = p;
+  $("outside-router-card").hidden = p;
+  $("outside-consoles-card").hidden = p;
+  $("outside-playit-card").hidden = !p;
+}
+
 function renderOutside(st) {
   const set = st.settings;
   if (!outsideDirty) {
@@ -2170,15 +2190,18 @@ function renderOutside(st) {
     $("outside-address").value = set.address || "";
     $("outside-upnp").checked = set.upnp;
     $("outside-consoles").checked = set.consoles;
+    $(set.playit ? "outside-via-playit" : "outside-via-router").checked = true;
   }
+  applyOutsideVia();
+  renderPlayit(st);
   $("outside-address").placeholder = st.publicIP ? `Leave empty to use ${st.publicIP}, or type a hostname` : "mc.example.com, or leave empty for this home's internet address";
   const facts = [];
-  if (st.publicIP) facts.push(fact(!st.shared, `This home's internet address is ${st.publicIP}` + (st.publicIPFrom === "router" ? " (from the router)." : ".")));
+  if (set.playit) { /* playit.gg's card says how it's going */ } else if (st.publicIP) facts.push(fact(!st.shared, `This home's internet address is ${st.publicIP}` + (st.publicIPFrom === "router" ? " (from the router)." : ".")));
   else if (set.enabled) facts.push(fact(false, st.publicIPError || "Looking up this home's internet address…"));
-  if (st.shared) facts.push(fact(false, "Your internet provider or a second router shares this address (called CGNAT or double NAT), so forwarded ports can't be reached from outside. Ask your provider for a public IP, or put the router in front into bridge mode."));
+  if (st.shared && !set.playit) facts.push(fact(false, "Your internet provider or a second router shares this address (called CGNAT or double NAT), so forwarded ports can't be reached from outside. Ask your provider for a public IP, or put the router in front into bridge mode."));
   if (set.address && st.addressIP && !st.addressWarning) facts.push(fact(true, `${set.address} leads here (${st.addressIP}).`));
   if (st.addressWarning) facts.push(fact(false, st.addressWarning));
-  if (set.enabled && st.address) facts.push(fact(true, `Friends join at ${st.address}, with each server's own port.`));
+  if (set.enabled && st.address && !set.playit) facts.push(fact(true, `Friends join at ${st.address}, with each server's own port.`));
   $("outside-facts").replaceChildren(...facts);
   $("outside-facts").hidden = facts.length === 0;
 
@@ -2195,15 +2218,119 @@ function renderOutside(st) {
         el("td", { class: p.opened ? "ok" : (p.error ? "warn" : "muted") }, p.opened ? "Opened" : (set.upnp ? (p.error || "…") : "Forward by hand"))))]
     : [el("tr", {}, el("td", { class: "muted" }, set.enabled ? "Nothing to forward yet: no server is open to friends outside." : "Nothing is forwarded while outside access is off."))]));
 
+  const tunnels = (st.playit && st.playit.tunnels) || [];
+  const playitAt = (x) => {
+    const at = tunnels.filter((t) => t.serverID === x.id && t.address).map((t) => `${t.address}:${t.publicPort}`);
+    return at.length ? `Open at ${at.join(" and ")}` : "Open; playit.gg is setting up its address";
+  };
   $("outside-servers").replaceChildren(...((st.servers || []).length ? st.servers.map((x) => {
-    const detail = x.problem ? `Can't be reached: ${x.problem}` : (x.reached ? `Open at ${st.address}:${x.port}` : (x.open ? "Open (outside access is off)" : `Closed · port ${x.port}`));
+    const detail = x.problem ? `Can't be reached: ${x.problem}` : (x.reached ? (set.playit ? playitAt(x) : `Open at ${st.address}:${x.port}`) : (x.open ? "Open (outside access is off)" : `Closed · port ${x.port}`));
     return row(x.name, detail,
       el("a", { class: "button", href: serverHref(x.id) }, "Open page"));
   }) : [emptyRow("No servers yet.")]));
 }
 
-for (const id of ["outside-enabled", "outside-upnp", "outside-consoles", "outside-address"]) {
-  $(id).addEventListener("input", () => { outsideDirty = true; $("outside-saved").hidden = true; });
+for (const id of ["outside-enabled", "outside-upnp", "outside-consoles", "outside-address", "outside-via-router", "outside-via-playit"]) {
+  $(id).addEventListener("input", () => { outsideDirty = true; $("outside-saved").hidden = true; applyOutsideVia(); });
+}
+
+// ---- playit.gg ----
+
+function renderPlayit(st) {
+  const p = st.playit || {};
+  const set = st.settings;
+  const facts = [];
+  const open = (p.tunnels || []).some((t) => t.enabled);
+  if (!p.linked) {
+    facts.push(fact(false, "Not linked yet. Link a playit.gg account (a free one is fine): playit.gg opens in a new tab, you sign in and approve Block Party, and that's all."));
+  } else {
+    facts.push(fact(true, "Linked to playit.gg."));
+    if (p.accountNote) facts.push(fact(false, p.accountNote));
+    if (p.error) facts.push(fact(false, p.error));
+    if (p.agent === "running") facts.push(fact(true, "playit.gg's agent is running in the panel."));
+    else if (open || p.agent !== "stopped") facts.push(fact(false, p.agentError || "Starting playit.gg's agent…"));
+    else if (set.enabled && set.playit) facts.push(fact(true, "playit.gg's agent starts when a server is open to friends outside."));
+    if (p.tcp && p.tcp.allowed) facts.push(fact(true, `Tunnels in use on the account: ${p.tcp.used} of ${p.tcp.allowed} TCP, ${p.udp.used} of ${p.udp.allowed} UDP.`));
+  }
+  if (p.linked && !set.playit) facts.push(fact(false, "Save with \"Through playit.gg\" chosen to use it."));
+  $("playit-facts").replaceChildren(...facts);
+
+  $("playit-actions").replaceChildren(p.linked
+    ? btn("Unlink playit.gg", async (ev) => {
+      if (!confirm("Unlink playit.gg?\n\nThe panel deletes its tunnels there, so the addresses friends have stop working. Linking again gives new ones.")) return;
+      const b = ev.currentTarget;
+      b.disabled = true;
+      try { renderOutside(await del("/api/outside/playit")); showOutsideError(null); } catch (err) { showOutsideError(err); }
+      b.disabled = false;
+    }, "danger")
+    : btn("Link playit.gg", linkPlayit, "primary", playitClaiming));
+  // "Linked" stays until it's unlinked again.
+  if (!p.linked && !playitClaiming && $("playit-claim").classList.contains("ok")) $("playit-claim").hidden = true;
+
+  const tunnels = p.tunnels || [];
+  $("playit-tunnels").hidden = !p.linked;
+  $("playit-tunnels").replaceChildren(...(tunnels.length
+    ? [el("tr", {}, el("th", {}, "Server"), el("th", {}, "Type"), el("th", {}, "Friends use"), el("th", {}, "Status")),
+      ...tunnels.map((t) => el("tr", {},
+        el("td", {}, t.name), el("td", {}, t.proto.toUpperCase()),
+        el("td", { class: "mono" }, t.address ? `${t.address}:${t.publicPort}` : "…"),
+        el("td", { class: t.ready ? "ok" : (t.problem ? "warn" : "muted") }, t.ready ? "Open" : (t.problem || (t.enabled ? "…" : "Closed")))))]
+    : [el("tr", {}, el("td", { class: "muted" }, "No tunnels yet: open a server to friends outside on its Overview."))]));
+
+  const log = p.agentLog || [];
+  $("playit-log-box").hidden = !p.linked || log.length === 0;
+  $("playit-log").textContent = log.join("\n");
+}
+
+let playitClaiming = false;
+
+async function linkPlayit(ev) {
+  const b = ev.currentTarget;
+  b.disabled = true;
+  // Opened straight away, so the browser doesn't block it as a pop-up.
+  const tab = window.open("", "_blank");
+  const note = $("playit-claim");
+  try {
+    const { url } = await post("/api/outside/playit/claim");
+    if (tab) tab.location = url;
+    note.replaceChildren("Approve Block Party on playit.gg in the new tab (sign in or make a free account first). This page carries on by itself. ",
+      el("a", { href: url, target: "_blank", rel: "noopener" }, "Open playit.gg"));
+    note.className = "small";
+    note.hidden = false;
+    playitClaiming = true;
+    showOutsideError(null);
+  } catch (err) {
+    if (tab) tab.close();
+    showOutsideError(err);
+    b.disabled = false;
+    return;
+  }
+  const until = Date.now() + 15 * 60 * 1000;
+  while (playitClaiming && Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 3000));
+    if (!signedIn) break;
+    try {
+      const res = await post("/api/outside/playit/claim/check");
+      if (res.state === "linked") {
+        note.textContent = "Linked. Open a server to friends outside on its Overview and it gets a playit.gg address.";
+        note.className = "small ok";
+        playitClaiming = false;
+        dashOutsideAt = 0;
+        if (view === "outside") renderOutside(res.outside);
+        return;
+      }
+      if (res.state === "rejected" || res.state === "none") {
+        note.textContent = res.state === "rejected" ? "playit.gg says it wasn't approved. Try again if that was a mistake." : "The playit.gg link expired. Try again.";
+        note.className = "small warn";
+        break;
+      }
+    } catch (err) {
+      note.textContent = err.message;
+      note.className = "small warn";
+    }
+  }
+  playitClaiming = false;
+  if (view === "outside") loadOutside(false);
 }
 $("outside-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
@@ -2213,7 +2340,7 @@ $("outside-form").addEventListener("submit", async (ev) => {
   try {
     const st = await api("/api/outside", { method: "PUT", body: JSON.stringify({
       enabled: $("outside-enabled").checked, address: $("outside-address").value.trim(),
-      upnp: $("outside-upnp").checked, consoles: $("outside-consoles").checked }) });
+      upnp: $("outside-upnp").checked, consoles: $("outside-consoles").checked, playit: outsideViaPlayit() }) });
     outsideDirty = false;
     dashOutsideAt = 0;
     renderOutside(st);
