@@ -276,3 +276,61 @@ func TestManagerOpensWhatsOpen(t *testing.T) {
 		t.Errorf("after stopping: %v", f.forwards)
 	}
 }
+
+func TestPlayitInsteadOfTheRouter(t *testing.T) {
+	f := newFakeRouter(t)
+	dir := t.TempDir()
+	list := []Server{
+		{ID: "kids", Name: "Kids Survival", Port: 19144, Open: true, Bedrock: true},
+		{ID: "java", Name: "Java World", Port: 25565, Open: true, Java: true, JavaConsoles: true},
+	}
+	m := New(Options{
+		DataDir: dir, LocalIP: netip.MustParseAddr("10.0.1.117"), ListPort: 19132,
+		GatewayURL: f.srv.URL + "/desc.xml", Servers: func() []Server { return list },
+	})
+	ctx := context.Background()
+	if err := m.SetSettings(Settings{Enabled: true, UPnP: true, Consoles: true, Address: "203.0.113.5"}); err != nil {
+		t.Fatal(err)
+	}
+	m.Refresh(ctx)
+	if !f.has("UDP/19144") || !f.has("TCP/25565") {
+		t.Fatalf("forwards: %v", f.forwards)
+	}
+	// Through playit.gg: the router's forwards are closed, and the console
+	// server list isn't offered outside (each server has its own address).
+	if err := m.SetSettings(Settings{Enabled: true, UPnP: true, Consoles: true, Address: "203.0.113.5", Playit: true}); err != nil {
+		t.Fatal(err)
+	}
+	st := m.Refresh(ctx)
+	if len(f.forwards) != 0 || len(st.Ports) != 0 {
+		t.Errorf("forwards with playit.gg: %v %v", f.forwards, st.Ports)
+	}
+	if i := m.Info(); i.Enabled || i.Consoles || i.Open(19144) || i.Open(25565) {
+		t.Errorf("info with playit.gg: %+v", i)
+	}
+	// Only the Java server is reached: playit.gg's free plan can't carry
+	// NetherNet, which Bedrock players use.
+	if len(st.Servers) != 2 || st.Servers[0].Name != "Java World" || !st.Servers[0].Reached || st.Servers[1].Reached || !strings.Contains(st.Servers[1].Problem, "Java") || st.Playit.Linked {
+		t.Errorf("status: %+v", st)
+	}
+}
+
+func TestPlayitTunnelsPerServer(t *testing.T) {
+	for _, c := range []struct {
+		s    Server
+		want string
+	}{
+		{Server{Bedrock: true}, ""},
+		{Server{Java: true}, "tcp:minecraft-java"},
+		{Server{Java: true, JavaConsoles: true}, "tcp:minecraft-java"},
+		{Server{}, ""}, // Hytale
+	} {
+		var got []string
+		for _, w := range c.s.PlayitTunnels(true) {
+			got = append(got, w.Proto+":"+w.Type)
+		}
+		if strings.Join(got, " ") != c.want {
+			t.Errorf("%+v: %v, want %s", c.s, got, c.want)
+		}
+	}
+}

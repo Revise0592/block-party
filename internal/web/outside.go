@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ScottSchneck/block-party/internal/outside"
+	"github.com/ScottSchneck/block-party/internal/playit"
 	"github.com/ScottSchneck/block-party/internal/servers"
 )
 
@@ -19,6 +20,9 @@ func (s *Server) outsideRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/outside", ownerOnly(s.getOutside))
 	mux.HandleFunc("PUT /api/outside", ownerOnly(s.putOutside))
 	mux.HandleFunc("POST /api/outside/check", ownerOnly(s.checkOutside))
+	mux.HandleFunc("POST /api/outside/playit/claim", ownerOnly(s.startPlayitClaim))
+	mux.HandleFunc("POST /api/outside/playit/claim/check", ownerOnly(s.checkPlayitClaim))
+	mux.HandleFunc("DELETE /api/outside/playit", ownerOnly(s.unlinkPlayit))
 	mux.HandleFunc("GET /api/servers/{id}/outside", s.withServer(levelRun, s.serverOutside))
 	mux.HandleFunc("POST /api/servers/{id}/outside", s.withServer(levelCare, s.setServerOutside))
 }
@@ -115,6 +119,43 @@ func (s *Server) checkOutside(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.refreshOutside(r))
 }
 
+// Linking playit.gg: the owner approves the panel on playit.gg (the page
+// opens in a new tab) while the panel asks whether they have.
+
+func (s *Server) startPlayitClaim(w http.ResponseWriter, r *http.Request) {
+	url, err := s.out.Playit().StartClaim(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"url": url})
+}
+
+func (s *Server) checkPlayitClaim(w http.ResponseWriter, r *http.Request) {
+	state, err := s.out.Playit().CheckClaim(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	if state == playit.ClaimLinked {
+		s.note(r, nil, "linked a playit.gg account")
+		writeJSON(w, http.StatusOK, map[string]any{"state": state, "outside": s.refreshOutside(r)})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"state": state})
+}
+
+func (s *Server) unlinkPlayit(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	if err := s.out.Playit().Unlink(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.note(r, nil, "unlinked playit.gg")
+	writeJSON(w, http.StatusOK, s.refreshOutside(r))
+}
+
 // serverOutsideView is what a server's page shows about friends outside.
 type serverOutsideView struct {
 	Open     bool   `json:"open"`    // marked open
@@ -140,6 +181,12 @@ type serverOutsideView struct {
 	BedrockPort int `json:"bedrockPort,omitempty"`
 	// Forwards are the forwards it needs, for setting up by hand.
 	Forwards []string `json:"forwards,omitempty"`
+	// Playit: friends come in through playit.gg. Address and Port are then
+	// the server's playit.gg address, for Java players only.
+	Playit bool `json:"playit,omitempty"`
+	// PlayitCant: through playit.gg friends can't reach this server at all
+	// (it isn't a Java server).
+	PlayitCant bool `json:"playitCant,omitempty"`
 }
 
 func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsideView {
@@ -185,7 +232,30 @@ func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsi
 		}
 	}
 	v.Opened = opened == len(need)
+	if st.Settings.Playit {
+		s.playitView(&v, ss.ID)
+	}
 	return v
+}
+
+// playitView fills in a server's playit.gg address. Only Java servers
+// have one, for Java players: Bedrock players and consoles (through Geyser
+// too) join over NetherNet from Minecraft 26.60, which playit.gg's free
+// plan can't carry.
+func (s *Server) playitView(v *serverOutsideView, id string) {
+	v.Playit, v.UPnP, v.Shared, v.Consoles, v.ConsoleDNS = true, false, false, false, ""
+	v.Address, v.Port, v.BedrockPort, v.Forwards, v.Opened, v.PortError = "", 0, 0, nil, false, ""
+	if !v.Java {
+		v.PlayitCant, v.Reached = true, false
+		return
+	}
+	t, ok := s.out.Playit().Tunnel(id, "tcp")
+	if ok {
+		v.Address, v.Port, v.Opened, v.PortError = t.Address, t.PublicPort, t.Ready, t.Problem
+	}
+	if !s.out.Playit().Linked() {
+		v.Opened, v.PortError = false, "playit.gg isn't linked yet"
+	}
 }
 
 func (s *Server) serverOutside(w http.ResponseWriter, r *http.Request, srv *servers.Server) {

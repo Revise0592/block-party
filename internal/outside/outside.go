@@ -8,6 +8,10 @@
 // worked out again every minute, so a change made anywhere (a setting, a
 // server that's added or removed, the router forgetting a forward) is
 // corrected on its own.
+//
+// Instead of the router, friends can come in through playit.gg (see the
+// playit package): then nothing is forwarded, and each open server gets
+// its own playit.gg address.
 package outside
 
 import (
@@ -29,6 +33,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/ScottSchneck/block-party/internal/playit"
 )
 
 // Settings are the owner's choices, kept in <data>/outside.json.
@@ -43,6 +49,9 @@ type Settings struct {
 	// Consoles lets friends' consoles use the server list from outside
 	// (their DNS pointed at this home's address).
 	Consoles bool `json:"consoles"`
+	// Playit: friends come in through playit.gg instead of the router.
+	// Address, UPnP and Consoles don't apply then.
+	Playit bool `json:"playit"`
 }
 
 // Server is one of the panel's servers, as far as this package cares.
@@ -94,6 +103,22 @@ func (s Server) Forwards() []Port {
 	return out
 }
 
+// PlayitTunnels returns the playit.gg tunnels the server needs: one TCP
+// tunnel for a Java server, and none for anything else. From Minecraft
+// 26.60 Bedrock players (and consoles through Geyser) join over NetherNet,
+// which playit.gg's free plan can't carry, so friends outside only reach
+// Java servers, as Java players, through it.
+func (s Server) PlayitTunnels(open bool) []playit.Want {
+	if !s.Java {
+		return nil
+	}
+	return []playit.Want{{ServerID: s.ID, Name: s.Name, Port: s.Port, Proto: "tcp", Type: playit.TypeJava, Open: open}}
+}
+
+// PlayitCarries reports whether friends outside can reach the server
+// through playit.gg (see PlayitTunnels).
+func (s Server) PlayitCarries() bool { return s.Java }
+
 // Port is one forward on the router.
 type Port struct {
 	Port  int    `json:"port"`
@@ -140,6 +165,9 @@ type Status struct {
 	Ports   []PortState   `json:"ports"`
 	Servers []ServerState `json:"servers"`
 	Checked time.Time     `json:"checked"`
+	// Playit is playit.gg's side, when friends come in that way (or an
+	// account is linked).
+	Playit playit.Status `json:"playit"`
 }
 
 // Info is what the console server list needs.
@@ -172,7 +200,10 @@ type Options struct {
 	GatewayURL string
 	// Servers lists the panel's servers.
 	Servers func() []Server
-	Log     *slog.Logger
+	// Playit keeps the playit.gg tunnels. Nil means one kept in
+	// <DataDir>/playit.
+	Playit *playit.Manager
+	Log    *slog.Logger
 }
 
 // DefaultLookupURLs are asked for the home's internet address, in turn.
@@ -182,6 +213,7 @@ var DefaultLookupURLs = []string{"https://api.ipify.org", "https://icanhazip.com
 type Manager struct {
 	opts Options
 	log  *slog.Logger
+	pl   *playit.Manager
 
 	mu       sync.Mutex
 	settings Settings
@@ -215,7 +247,10 @@ func New(opts Options) *Manager {
 	if log == nil {
 		log = slog.Default()
 	}
-	m := &Manager{opts: opts, log: log.With("src", "outside"), kick: make(chan chan struct{}, 1), mapped: map[string]mapping{}}
+	m := &Manager{opts: opts, log: log.With("src", "outside"), kick: make(chan chan struct{}, 1), mapped: map[string]mapping{}, pl: opts.Playit}
+	if m.pl == nil {
+		m.pl = playit.New(playit.Options{Dir: filepath.Join(opts.DataDir, "playit"), Log: log})
+	}
 	if b, err := os.ReadFile(m.settingsPath()); err == nil {
 		_ = json.Unmarshal(b, &m.settings)
 	}
@@ -234,6 +269,9 @@ func New(opts Options) *Manager {
 
 func (m *Manager) settingsPath() string { return filepath.Join(m.opts.DataDir, "outside.json") }
 func (m *Manager) mappingsPath() string { return filepath.Join(m.opts.DataDir, "upnp-forwards.json") }
+
+// Playit returns the playit.gg side.
+func (m *Manager) Playit() *playit.Manager { return m.pl }
 
 // Settings returns the owner's choices.
 func (m *Manager) Settings() Settings {
@@ -292,6 +330,7 @@ func (m *Manager) Status() Status {
 	st := m.status
 	st.Ports = append([]PortState(nil), st.Ports...)
 	st.Servers = append([]ServerState(nil), st.Servers...)
+	st.Playit = m.pl.Status() // the agent's state as it is now
 	return st
 }
 
@@ -344,16 +383,22 @@ func (m *Manager) Run(ctx context.Context) {
 		}
 	}
 	for {
-		m.reconcile(ctx)
+		busy := m.reconcile(ctx)
 		for _, d := range waiting {
 			close(d)
 		}
 		waiting = nil
+		var soon <-chan time.Time // playit.gg is setting something up: look again shortly
+		if busy {
+			soon = time.After(5 * time.Second)
+		}
 		select {
 		case <-ctx.Done():
 			m.closeAll()
+			m.pl.Stop()
 			return
 		case <-tick.C:
+		case <-soon:
 		case d := <-m.kick:
 			take(d)
 		}
@@ -395,8 +440,9 @@ func isShared(a netip.Addr) bool {
 	return !a.IsGlobalUnicast() || a.IsPrivate() || cgnat.Contains(a)
 }
 
-// reconcile works out what should be open and makes it so.
-func (m *Manager) reconcile(ctx context.Context) {
+// reconcile works out what should be open and makes it so. It reports
+// whether playit.gg is still setting something up.
+func (m *Manager) reconcile(ctx context.Context) (busy bool) {
 	m.passMu.Lock()
 	defer m.passMu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
@@ -404,8 +450,10 @@ func (m *Manager) reconcile(ctx context.Context) {
 	set := m.Settings()
 	st := Status{Settings: set, LocalIP: m.opts.LocalIP.String(), Ports: []PortState{}, Servers: []ServerState{}, Checked: time.Now()}
 
-	// Which servers are open, and the forwards they need.
+	// Which servers are open, and the forwards (or tunnels) they need.
+	viaPlayit := set.Playit
 	var want []Port
+	var tunnels []playit.Want
 	open := map[int]bool{}
 	var list []Server
 	if m.opts.Servers != nil {
@@ -414,12 +462,36 @@ func (m *Manager) reconcile(ctx context.Context) {
 	sort.Slice(list, func(i, j int) bool { return strings.ToLower(list[i].Name) < strings.ToLower(list[j].Name) })
 	for _, s := range list {
 		ss := ServerState{ID: s.ID, Name: s.Name, Port: s.Port, Open: s.Open, Problem: s.Problem}
-		if s.Open && s.Problem == "" && set.Enabled {
+		if viaPlayit && set.Enabled && s.Open && s.Problem == "" && !s.PlayitCarries() {
+			ss.Problem = "playit.gg only carries Java servers for now"
+		}
+		reached := s.Open && s.Problem == "" && set.Enabled && (!viaPlayit || s.PlayitCarries())
+		tunnels = append(tunnels, s.PlayitTunnels(reached && viaPlayit)...)
+		if reached {
 			ss.Reached = true
-			open[s.Port] = true
-			want = append(want, s.Forwards()...)
+			if !viaPlayit {
+				open[s.Port] = true
+				want = append(want, s.Forwards()...)
+			}
 		}
 		st.Servers = append(st.Servers, ss)
+	}
+	if m.pl.Linked() {
+		busy = m.pl.Sync(ctx, set.Enabled && viaPlayit, tunnels)
+	}
+	if viaPlayit {
+		// Nothing goes through the router: close what this panel opened
+		// there, and leave the console server list to the house.
+		if len(m.mapped) > 0 {
+			m.findGateway(ctx, &st)
+			m.applyForwards(ctx, nil, &st)
+		}
+		st.Router, st.RouterError = "", ""
+		m.mu.Lock()
+		m.status = st
+		m.info = Info{open: open}
+		m.mu.Unlock()
+		return busy
 	}
 	if set.Enabled && set.Consoles {
 		// RakNet (UDP) and NetherNet (TCP signaling, UDP gameplay).
@@ -519,6 +591,7 @@ func (m *Manager) reconcile(ctx context.Context) {
 	m.status = st
 	m.info = info
 	m.mu.Unlock()
+	return busy
 }
 
 // findGateway looks for the router once, and again after it stops answering.

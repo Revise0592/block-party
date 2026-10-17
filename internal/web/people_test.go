@@ -288,6 +288,34 @@ func TestOutsideAccessPermissions(t *testing.T) {
 	if w := call(h, "POST", "/api/servers/ava/allowlist-enabled", `{"enabled":false}`, owner); w.Code == 200 {
 		t.Error("allowlist turned off while open")
 	}
+
+	// Through playit.gg: only the owner links it. A Bedrock server can't be
+	// reached through it (NetherNet), and until it's linked a Java
+	// server's view says so instead of showing the home's address.
+	for _, path := range []string{"/api/outside/playit/claim", "/api/outside/playit/claim/check"} {
+		if w := call(h, "POST", path, "", ava); w.Code != 403 {
+			t.Errorf("kid called %s: %d", path, w.Code)
+		}
+	}
+	if w := call(h, "DELETE", "/api/outside/playit", "", ava); w.Code != 403 {
+		t.Errorf("kid unlinked playit.gg: %d", w.Code)
+	}
+	if w := call(h, "PUT", "/api/outside", `{"enabled":true,"playit":true}`, owner); w.Code != 200 {
+		t.Fatalf("playit settings: %d %s", w.Code, w.Body)
+	}
+	v = serverOutsideView{}
+	json.Unmarshal(call(h, "GET", "/api/servers/ava/outside", "", ava).Body.Bytes(), &v)
+	if !v.Playit || !v.PlayitCant || v.Reached || v.Opened || v.Address != "" || v.Forwards != nil {
+		t.Errorf("playit view: %+v", v)
+	}
+	jv := serverOutsideView{Open: true, Java: true, JavaConsoles: true, Address: "203.0.113.5", Port: 25565, BedrockPort: 25566}
+	s.playitView(&jv, "java")
+	if !jv.Playit || jv.PlayitCant || jv.Opened || jv.Address != "" || jv.BedrockPort != 0 || !strings.Contains(jv.PortError, "isn't linked") {
+		t.Errorf("Java playit view: %+v", jv)
+	}
+	if w := call(h, "POST", "/api/outside/playit/claim/check", "", owner); w.Code != 200 || !strings.Contains(w.Body.String(), `"none"`) {
+		t.Errorf("claim check with no claim: %d %s", w.Code, w.Body)
+	}
 }
 
 func TestAddonRoutes(t *testing.T) {

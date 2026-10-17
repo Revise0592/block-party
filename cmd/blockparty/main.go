@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,6 +25,7 @@ import (
 	"github.com/ScottSchneck/block-party/internal/auth"
 	"github.com/ScottSchneck/block-party/internal/notify"
 	"github.com/ScottSchneck/block-party/internal/outside"
+	"github.com/ScottSchneck/block-party/internal/playit"
 	"github.com/ScottSchneck/block-party/internal/serverlist"
 	"github.com/ScottSchneck/block-party/internal/servers"
 	"github.com/ScottSchneck/block-party/internal/web"
@@ -141,6 +143,12 @@ func main() {
 		LookupURLs: lookups,
 		GatewayURL: os.Getenv("UPNP_GATEWAY"),
 		Servers:    web.OutsideServers(mgr),
+		// Friends can come in through playit.gg instead of the router.
+		Playit: playit.New(playit.Options{
+			Dir:       filepath.Join(cfg.DataDir, "playit"),
+			API:       os.Getenv("PLAYIT_API"),
+			AgentPath: os.Getenv("PLAYIT_AGENT"),
+		}),
 	})
 	// Game servers tell consoles where to connect over NetherNet: here at
 	// home, and at the home's internet address while friends outside can
