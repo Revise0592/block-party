@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1
+
+- Java servers on Paper for Minecraft 26 show who's playing again: it logs
+  joins and leaves as "System chat: Steve joined the game". From
+  [Revise0592's fork](https://github.com/Revise0592/block-party).
+
 ## 1.1.0
 
 Ready for Minecraft 26.60 (October 27, 2026), which joins servers over

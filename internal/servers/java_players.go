@@ -304,8 +304,11 @@ var (
 	// Names: Java usernames, and console players' ".Gamer_Tag" (gamertags
 	// can have letters of any language, and #).
 	javaPlayerName = `([\p{L}\p{N}_.#]{2,17})`
-	reJavaJoin     = regexp.MustCompile(javaPrefix + javaPlayerName + `(?: \(formerly known as [\p{L}\p{N}_.#]+\))? joined the game$`)
-	reJavaLeave    = regexp.MustCompile(javaPrefix + javaPlayerName + ` left the game$`)
+	// Paper for Minecraft 26 logs join and leave messages as
+	// "System chat: Steve joined the game".
+	javaSystemChat = `(?:System chat: )?`
+	reJavaJoin     = regexp.MustCompile(javaPrefix + javaSystemChat + javaPlayerName + `(?: \(formerly known as [\p{L}\p{N}_.#]+\))? joined the game$`)
+	reJavaLeave    = regexp.MustCompile(javaPrefix + javaSystemChat + javaPlayerName + ` left the game$`)
 	// The server's own lines for the same, which plugins can't change (they
 	// often change or hide "joined the game" and "left the game"):
 	// "Steve[/1.2.3.4:5] logged in with entity id 7 at (...)" and
