@@ -323,6 +323,9 @@ func (s *Server) onLineLocked(line string) {
 		s.onHytaleLineLocked(line)
 		return
 	}
+	// Colour codes and a stray carriage return would stop the lines from
+	// matching (and look odd in the console).
+	line = strings.TrimRight(reANSI.ReplaceAllString(line, ""), "\r")
 	if s.isJava() {
 		if s.onJavaSaveLineLocked(line) {
 			return

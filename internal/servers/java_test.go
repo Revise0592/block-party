@@ -408,13 +408,23 @@ func TestJavaLinesCantBeFakedInChat(t *testing.T) {
 		"[12:00:05 INFO]: .Kid_One joined the game":                                                       "join .Kid_One",
 		"[12:00:05 INFO]: .Jürgen#12 left the game":                                                       "leave .Jürgen#12",
 		"[12:00:05 INFO]: Disconnecting .Stranger (/1.2.3.4:5): You are not white-listed on this server!": "reject .Stranger",
+		// The server's own lines, which plugins can't change.
+		"[12:00:05 INFO]: Steve[/192.168.1.20:50000] logged in with entity id 214 at ([world]0.5, 64.0, 0.5)": "join Steve",
+		"[12:00:05 INFO]: .Kid_One[/127.0.0.1:41234] logged in with entity id 9 at ([world]1.0, 70.0, 2.0)":   "join .Kid_One",
+		"[12:00:05 INFO]: Steve lost connection: Disconnected":                                                "leave Steve",
+		"[12:00:05 INFO]: <Bob> Steve lost connection: Disconnected":                                          "",
+		"[12:00:05 INFO]: <Bob> Steve[/1.2.3.4:5] logged in with entity id 1 at":                              "",
 	} {
 		got := ""
 		if m := reJavaJoin.FindStringSubmatch(line); m != nil {
 			got = "join " + m[1]
+		} else if m := reJavaLogin.FindStringSubmatch(line); m != nil {
+			got = "join " + m[1]
 		} else if m := reJavaNotAllow.FindStringSubmatch(line); m != nil {
 			got = "reject " + m[1]
 		} else if m := reJavaLeave.FindStringSubmatch(line); m != nil {
+			got = "leave " + m[1]
+		} else if m := reJavaLost.FindStringSubmatch(line); m != nil {
 			got = "leave " + m[1]
 		}
 		if got != want {

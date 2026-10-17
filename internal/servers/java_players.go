@@ -306,6 +306,12 @@ var (
 	javaPlayerName = `([\p{L}\p{N}_.#]{2,17})`
 	reJavaJoin     = regexp.MustCompile(javaPrefix + javaPlayerName + `(?: \(formerly known as [\p{L}\p{N}_.#]+\))? joined the game$`)
 	reJavaLeave    = regexp.MustCompile(javaPrefix + javaPlayerName + ` left the game$`)
+	// The server's own lines for the same, which plugins can't change (they
+	// often change or hide "joined the game" and "left the game"):
+	// "Steve[/1.2.3.4:5] logged in with entity id 7 at (...)" and
+	// "Steve lost connection: Disconnected".
+	reJavaLogin    = regexp.MustCompile(javaPrefix + javaPlayerName + `\[/[^\]]*\] logged in with entity id `)
+	reJavaLost     = regexp.MustCompile(javaPrefix + javaPlayerName + ` lost connection: `)
 	reJavaNotAllow = regexp.MustCompile(javaPrefix + `(?:Disconnecting )?(?:com\.mojang\.authlib\.GameProfile.*?name=)?` + javaPlayerName + `(?: \(/|,| ).*(?:not white-?listed|not on the white-?list)`)
 	reJavaSaved    = regexp.MustCompile(javaPrefix + `Saved the game$`)
 	reJavaServer   = regexp.MustCompile(javaPrefix)
@@ -322,8 +328,15 @@ func (s *Server) onJavaLineLocked(line string) {
 			s.m.log.Info("server running", "id", s.meta.ID)
 			s.applyJavaPendingLocked()
 		}
-	case reJavaJoin.MatchString(line):
-		name := reJavaJoin.FindStringSubmatch(line)[1]
+	case reJavaJoin.MatchString(line) || reJavaLogin.MatchString(line):
+		m := reJavaJoin.FindStringSubmatch(line)
+		if m == nil {
+			m = reJavaLogin.FindStringSubmatch(line)
+		}
+		name := m[1]
+		if _, ok := s.players[name]; ok {
+			return // both lines come for one join
+		}
 		s.players[name] = Player{Name: name, Since: time.Now()}
 		s.playedSinceBackup = true
 		if isConsoleName(name) {
@@ -345,6 +358,8 @@ func (s *Server) onJavaLineLocked(line string) {
 		}
 	case reJavaLeave.MatchString(line):
 		delete(s.players, reJavaLeave.FindStringSubmatch(line)[1])
+	case reJavaLost.MatchString(line):
+		delete(s.players, reJavaLost.FindStringSubmatch(line)[1])
 	case reJavaNotAllow.MatchString(line):
 		name := reJavaNotAllow.FindStringSubmatch(line)[1]
 		// With account checks on (online-mode), the name is real.
