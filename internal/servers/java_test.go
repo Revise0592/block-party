@@ -428,7 +428,15 @@ func TestJavaLinesCantBeFakedInChat(t *testing.T) {
 			t.Errorf("%q: got %q, want %q", line, got, want)
 		}
 	}
-	if reJavaSaved.MatchString("[12:00:05 INFO]: <Bob> Saved the game") || !reJavaSaved.MatchString("[12:00:05 INFO]: Saved the game") {
-		t.Error("save line")
+	for line, want := range map[string]bool{
+		"[12:00:05 INFO]: Saved the game":                    true,
+		"[12:00:05 INFO]: System chat: Saved the game":       true, // Paper for Minecraft 26
+		"[12:00:05 INFO]: <Bob> Saved the game":              false,
+		"[12:00:05 INFO]: <Bob> System chat: Saved the game": false,
+		"[12:00:05 INFO]: System chat: <Bob> Saved the game": false,
+	} {
+		if reJavaSaved.MatchString(line) != want {
+			t.Errorf("%q: save line match should be %v", line, want)
+		}
 	}
 }

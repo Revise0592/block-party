@@ -310,9 +310,10 @@ var (
 	reJavaJoin     = regexp.MustCompile(javaPrefix + javaSystemChat + javaPlayerName + `(?: \(formerly known as [\p{L}\p{N}_.#]+\))? joined the game$`)
 	reJavaLeave    = regexp.MustCompile(javaPrefix + javaSystemChat + javaPlayerName + ` left the game$`)
 	reJavaNotAllow = regexp.MustCompile(javaPrefix + `(?:Disconnecting )?(?:com\.mojang\.authlib\.GameProfile.*?name=)?` + javaPlayerName + `(?: \(/|,| ).*(?:not white-?listed|not on the white-?list)`)
-	reJavaSaved    = regexp.MustCompile(javaPrefix + `Saved the game$`)
-	reJavaServer   = regexp.MustCompile(javaPrefix)
-	javaSaveLines  = []string{"Automatic saving is now disabled", "Saving the game (this may take a moment!)", "Saved the game", "Automatic saving is now enabled", "Saving is already turned"}
+	// Paper for Minecraft 26 logs it as "System chat: Saved the game".
+	reJavaSaved   = regexp.MustCompile(javaPrefix + javaSystemChat + `Saved the game\s*$`)
+	reJavaServer  = regexp.MustCompile(javaPrefix)
+	javaSaveLines = []string{"Automatic saving is now disabled", "Saving the game (this may take a moment!)", "Saved the game", "Automatic saving is now enabled", "Saving is already turned"}
 )
 
 // onJavaLineLocked handles a line from a Java server. Caller holds s.mu.
