@@ -2,7 +2,7 @@
 // The panel page ("Control Room" style). One page, with views chosen by the
 // address after # (see route): the servers dashboard, one server with its
 // Overview, Players, Settings, Backups and Console tabs, and the Backups,
-// Help, Import, Add server, Setup guide, People and Account pages.
+// Help, Settings, Import, Add server, Setup guide, People and Account pages.
 //
 // What shows depends on who's signed in: the owner sees everything; anyone
 // else sees only the servers the owner gave them, with the buttons their
@@ -403,8 +403,8 @@ function route() {
     notifyDirty = false;
   }
   if (next === "joining") next = "help";
-  if (!["servers", "backups", "help", "import", "add", "guide", "people", "outside", "upkeep", "notify", "account", "server"].includes(next)) next = "servers";
-  if ((["import", "guide", "people", "outside", "upkeep", "notify"].includes(next) && !me.owner) || (next === "add" && !me.canAdd)) {
+  if (!["servers", "backups", "help", "import", "add", "guide", "people", "outside", "upkeep", "notify", "account", "server", "settings"].includes(next)) next = "servers";
+  if ((["import", "guide", "people", "outside", "upkeep", "notify", "settings"].includes(next) && !me.owner) || (next === "add" && !me.canAdd)) {
     location.hash = "#/"; // not for this account
     return;
   }
@@ -475,7 +475,7 @@ function setView(v) {
   view = v;
   for (const sec of document.querySelectorAll(".view")) sec.hidden = sec.id !== "view-" + v;
   // Pages without their own menu entry light up the one they're reached from.
-  const navKey = { server: "servers", add: "servers", import: "servers", guide: "help", outside: "help", upkeep: "help", notify: "help", people: me.owner ? "people" : "account" }[v] || v;
+  const navKey = { server: "servers", add: "servers", import: "servers", guide: "help", outside: "settings", upkeep: "settings", notify: "settings", people: me.owner ? "people" : "account" }[v] || v;
   for (const a of document.querySelectorAll("[data-nav]")) {
     if (a.dataset.nav === navKey) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   }
@@ -879,7 +879,8 @@ function control(f) {
         onchange: (e) => setEdit(f, e.target.value) });
     default: {
       let shown = val || "(not set)";
-      if (f.key === "allow-list") shown = val === "true" ? "On" : "Off";
+      if (val === "true" || val === "false") shown = val === "true" ? "On" : "Off";
+      if (f.key === "transport") shown = { nethernet: "NetherNet", raknet: "RakNet" }[val] || shown;
       return el("span", { class: "ro" }, shown);
     }
   }
@@ -895,7 +896,7 @@ function renderSettings() {
   $("raw-help").textContent = hytale
     ? "Hytale's own settings file (JSON). Hytale writes it while it runs, so stop the server to change settings here or above."
     : "For settings that aren't above. The port and LAN settings are put back as the panel needs them. Changes apply after a restart.";
-  $("settings-groups").replaceChildren(...v.groups.map((g) => el("div", { class: "card" },
+  const cards = v.groups.map((g) => el("div", { class: "card" },
     el("h3", {}, g.title),
     ...g.fields.map((f) => {
       const dirty = f.key in edits;
@@ -906,7 +907,19 @@ function renderSettings() {
         f.link === "players" ? el("div", { class: "help" }, el("a", { href: serverHref(selected, "players") }, "Open the Players tab")) : null,
         dirty ? el("div", { class: "changed" }, `Changed from ${f.value || "(not set)"}`) : null,
         warn ? el("div", { class: "warn" }, "⚠ " + f.warning) : null);
-    }))));
+    })));
+  // Two columns on wide screens, both starting at the same top line: the
+  // first groups on the left and the rest on the right, split where the
+  // columns come out closest in length (so the order on a phone is the same).
+  const size = v.groups.map((g) => 2 + g.fields.length);
+  const total = size.reduce((a, b) => a + b, 0);
+  let split = cards.length, best = Infinity, run = 0;
+  for (let i = 0; i < cards.length; i++) {
+    run += size[i];
+    const diff = Math.abs(total - 2 * run);
+    if (i < cards.length - 1 && diff < best) { best = diff; split = i + 1; }
+  }
+  $("settings-groups").replaceChildren(el("div", { class: "col" }, ...cards.slice(0, split)), el("div", { class: "col" }, ...cards.slice(split)));
   updateSaveBar();
 }
 
@@ -2497,6 +2510,7 @@ function enterApp(st) {
     setInterval(() => { if (onServer("backups")) loadBackups(); }, 3000),
     setInterval(() => { if (onServer("overview")) loadOverview(); }, 10000),
     setInterval(checkUpdates, 10 * 60 * 1000),
+    setInterval(loadJoinInfo, 30 * 60 * 1000),
     setInterval(() => { if (signedIn && view === "outside" && !document.hidden) loadOutside(false); }, 10000),
   ];
   if (me.owner && !st.setupDone && !location.hash.startsWith("#/guide")) location.hash = "#/guide";
@@ -2524,7 +2538,32 @@ function fillJoinInfo() {
   const ip = joinInfo.hostIP || "the panel's IP";
   for (const id of ["side-list-name", "dash-list-name", "join-list-name"]) $(id).textContent = name;
   for (const id of ["side-list-ip", "dash-list-ip", "join-list-ip"]) $(id).textContent = ip;
+  fillPanelUpdate();
 }
+
+// ---- a newer Block Party ----
+
+// The owner hears about a newer release on the Servers page (until they
+// say "Not now" for that version) and on Settings.
+function fillPanelUpdate() {
+  const cur = joinInfo.version || "";
+  const next = me.owner ? joinInfo.panelUpdate || "" : "";
+  const notes = "https://github.com/ScottSchneck/block-party/blob/main/CHANGELOG.md";
+  let dismissed = "";
+  try { dismissed = localStorage.getItem("bp-update-dismissed") || ""; } catch (_) { /* private window */ }
+  $("panel-update-banner").hidden = !next || dismissed === next;
+  $("panel-update-text").textContent = `Block Party ${next} is out`;
+  $("panel-update-how").textContent = `(you have ${cur}). Update it from Unraid's Docker tab: Apply update.`;
+  $("panel-update-notes").href = notes;
+  $("settings-version").replaceChildren(...(next
+    ? [el("b", {}, `Block Party ${next} is out.`), ` This panel is ${cur}. `, el("a", { href: notes, target: "_blank", rel: "noopener noreferrer" }, "What's new")]
+    : [cur ? `This panel is Block Party ${cur}` + (joinInfo.panelLatest ? ", the newest version." : ".") : ""]));
+}
+
+$("panel-update-dismiss").addEventListener("click", () => {
+  try { localStorage.setItem("bp-update-dismissed", joinInfo.panelUpdate || ""); } catch (_) { /* private window */ }
+  $("panel-update-banner").hidden = true;
+});
 
 // ---- appearance ----
 

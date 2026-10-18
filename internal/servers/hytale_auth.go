@@ -407,7 +407,7 @@ func (m *Manager) hytaleTokenAndOwner(ctx context.Context, c hytaleClient) (stri
 
 // ErrHytaleSignIn means nobody is signed in to Hytale (or the sign-in ran
 // out).
-var ErrHytaleSignIn = errors.New("the panel isn't signed in to a Hytale account; the owner signs in under Help, Hytale account")
+var ErrHytaleSignIn = errors.New("the panel isn't signed in to a Hytale account; the owner signs in under Add server, Hytale")
 
 // refreshHytaleLocked refreshes one sign-in. Caller holds h.mu (the call
 // is short, and refreshes must not overlap: each one replaces the token).

@@ -99,6 +99,14 @@ input, select, textarea {
   font: inherit; color: var(--text); background: var(--field); border: 1px solid var(--line); border-radius: 8px;
 }
 input, select { min-height: 40px; padding: 0 12px; min-width: 0; }
+/* Drawn by the page, so every browser (Safari too) gives selects the same
+   height as text boxes. */
+select {
+  -webkit-appearance: none; appearance: none; height: 40px; padding-right: 34px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%238a8f98' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center; background-size: 12px 8px;
+}
+select[multiple] { height: auto; background-image: none; padding-right: 12px; }
 input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible {
   outline: 2px solid var(--link); outline-offset: 2px;
 }
@@ -158,8 +166,6 @@ html[data-mode="light"] .wm-a { fill: #2ba595; } html[data-mode="light"] .wm-a2 
 .col { min-width: 0; }
 @media (min-width: 1400px) {
   .cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  #settings-groups { columns: 2; column-gap: 16px; }
-  #settings-groups > * { break-inside: avoid; display: block; width: 100%; margin-top: 0; margin-bottom: 14px; }
 }
 .tabbar { display: none; }
 
@@ -247,8 +253,8 @@ html[data-mode="light"] .wm-a { fill: #2ba595; } html[data-mode="light"] .wm-a2 
 .field .help { color: var(--muted); font-size: 13px; }
 .field .warn { font-size: 13px; }
 .field .changed { color: var(--ok); font-size: 12px; font-weight: 600; }
-.field select, .field input[type=number], .field input[type=text] { min-width: 200px; max-width: 100%; }
-.field input[type=number] { min-width: 110px; width: 110px; }
+.field select, .field input[type=text] { width: auto; min-width: 260px; max-width: 100%; }
+.field input[type=number] { width: 110px; }
 .field .ro { color: var(--muted); font-family: var(--mono); font-size: 13px; }
 .field.dirty { box-shadow: inset 3px 0 0 var(--accent); padding-left: 10px; }
 .savebar { position: sticky; bottom: 12px; display: flex; gap: 8px; align-items: center; justify-content: flex-end; padding: 10px 14px; margin: 8px 0 14px; background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius); box-shadow: 0 4px 16px rgba(0, 0, 0, .18); }
@@ -317,11 +323,14 @@ legend { font-size: 13px; font-weight: 600; color: var(--soft); margin-bottom: 1
 
 /* phones and narrow windows */
 @media (max-width: 860px) {
+  /* Banners: the words across the top, their buttons underneath. */
+  .banner { flex-wrap: wrap; }
+  .banner p { flex: 1 1 calc(100% - 34px); }
   .sidebar { display: none; }
   .content { padding: 18px 16px 96px; }
   h1 { font-size: 24px; }
   .tabbar {
-    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
     background: var(--side); border-top: 1px solid var(--line); padding: 4px 4px calc(6px + env(safe-area-inset-bottom));
   }
   .tabbar a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 52px; color: var(--muted); text-decoration: none; font-size: 11.5px; }
@@ -436,6 +445,7 @@ html[data-style="treehouse"] button.primary, html[data-style="treehouse"] a.butt
 }
 html[data-style="treehouse"] button.go { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 html[data-style="treehouse"] input, html[data-style="treehouse"] select { min-height: 46px; border-radius: 12px; border-width: 2px; }
+html[data-style="treehouse"] select { height: 46px; }
 html[data-style="treehouse"] .card { border-radius: 18px; border-width: 2px; padding: 20px; }
 html[data-style="treehouse"] .banner { border-radius: 16px; border-width: 2px; }
 html[data-style="treehouse"] .people button, html[data-style="treehouse"] .people a.button { min-height: 40px; font-size: 14px; }

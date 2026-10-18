@@ -432,3 +432,23 @@ func TestForwardsText(t *testing.T) {
 		t.Errorf("java: %q", got)
 	}
 }
+
+func TestPanelUpdate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"name":"v1.2.0-rc1"},{"name":"v1.10.0"},{"name":"v1.9.3"},{"name":"edge"}]`))
+	}))
+	defer srv.Close()
+	latest, err := fetchLatestRelease(context.Background(), srv.URL)
+	if err != nil || latest != "v1.10.0" {
+		t.Fatalf("latest %q %v", latest, err)
+	}
+	for _, c := range []struct{ running, want string }{
+		{"v1.9.3", "v1.10.0"}, {"v1.10.0", ""}, {"v1.11.0", ""}, {"dev", ""}, {"main-abc1234", ""},
+	} {
+		s := &Server{opts: Options{Version: c.running}}
+		s.update.latest = latest
+		if got := s.newerPanel(); got != c.want {
+			t.Errorf("running %s: %q, want %q", c.running, got, c.want)
+		}
+	}
+}

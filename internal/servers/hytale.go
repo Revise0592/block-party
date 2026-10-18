@@ -386,7 +386,7 @@ func (s *Server) onHytaleLineLocked(line string) {
 		}
 		delete(s.players, name)
 	case reHytaleNoAuth.MatchString(line):
-		s.message = "Players can't join: the server isn't signed in to Hytale. The owner signs in under Help, Hytale account, then restart it."
+		s.message = "Players can't join: the server isn't signed in to Hytale. The owner signs in again under Add server, Hytale, then restarts it."
 	}
 }
 

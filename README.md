@@ -243,7 +243,7 @@ server's Overview.
 
 ### Friends outside the house
 
-Open **Help → Friends outside the house** (owner only):
+Open **Settings → Friends outside the house** (owner only):
 
 1. Tick **Let friends outside the house join**. For the address friends use,
    type your hostname (your own domain, or a dynamic DNS name like
@@ -397,7 +397,7 @@ panel yet (the Console tab works for anything).
 
 ### Notifications
 
-Under **Help → Notifications** (owner only), turn on any of:
+Under **Settings → Notifications** (owner only), turn on any of:
 
 - **Phone (ntfy).** Install the free ntfy app and subscribe to the topic the
   panel shows (it makes up one that's hard to guess). Works with ntfy.sh or
@@ -423,7 +423,7 @@ by the panel, and never shown in the page again.
 
 ### Overnight updates and restarts
 
-Under **Help → Overnight updates and restarts** (owner only) choose:
+Under **Settings → Overnight updates and restarts** (owner only) choose:
 
 - **Update servers when a new Bedrock version is out.** Each server is backed
   up first and started again if it was running. Consoles and phones update
@@ -580,6 +580,7 @@ apply without a restart.
 | `RTC_PORT_MIN`, `RTC_PORT_MAX` | `19300`, `19319` | UDP ports for the list's NetherNet connections |
 | `LOAD_PRESET` | `standard` | How the empty menu world is built: `standard` or `bedrockconnect` |
 | `LOG_LEVEL` | `info` | `debug` for more detail |
+| `PANEL_UPDATE_API` | GitHub | Where the panel looks for newer releases; `off` to never look |
 
 ## Building from source
 

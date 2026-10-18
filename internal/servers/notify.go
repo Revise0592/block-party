@@ -42,7 +42,7 @@ func (m *Manager) announceRelease(version string) {
 	if len(behind) == 0 {
 		return
 	}
-	text := "Press Update on each server in the panel, or turn on overnight updates (Help, Overnight updates and restarts)."
+	text := "Press Update on each server in the panel, or turn on overnight updates (Settings, Overnight updates and restarts)."
 	if len(behind) == 1 {
 		text = behind[0] + " can update. " + text
 	} else {

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.0
+
+- **A Settings page** for the owner, in the menu: friends outside the house,
+  people, overnight updates, notifications, importing servers and the setup
+  guide. Help is now just help.
+- **A notice when a newer Block Party is out**, on the Servers page and in
+  Settings, with what's new and how to update. The panel checks GitHub's
+  release list twice a day and downloads nothing (`PANEL_UPDATE_API=off`
+  turns the check off).
+- **A server's Settings tab** lines its two columns up at the top, and every
+  setting's control is the same height (Safari drew menus shorter).
+  Read-only values show as On and Off, and NetherNet and RakNet by name.
+
 ## 1.1.1
 
 - Java servers on Paper for Minecraft 26 show who's playing again: it logs
