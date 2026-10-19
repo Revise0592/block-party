@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.1
+
+From [Revise0592's fork](https://github.com/Revise0592/block-party):
+
+- **Backups of running Java servers on Paper for Minecraft 26 work again.**
+  Paper 26 logs "System chat: Saved the game", which the panel didn't
+  recognise, so every backup of a running Paper 26 server waited a minute and
+  failed.
+- **One spacing on every page**: the same gap between boxes and the same
+  padding inside them, a little tighter on phones.
+
 ## 1.2.0
 
 - **A Settings page** for the owner, in the menu: friends outside the house,

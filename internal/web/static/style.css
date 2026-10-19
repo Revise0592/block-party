@@ -15,6 +15,10 @@
   --display: "Space Grotesk", var(--font);
   --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --radius: 10px;
+  /* One spacing for the whole panel: --gap between boxes (cards, rows of
+     buttons between cards, grid columns), --pad inside a card. */
+  --gap: 14px;
+  --pad: 18px;
 }
 
 /* Dark (the default, and "auto" on a dark device). */
@@ -162,7 +166,7 @@ html[data-mode="light"] .wm-a { fill: #2ba595; } html[data-mode="light"] .wm-a2 
 /* Pages of separate cards (Help, Account) put them in two columns on wide
    screens, each column's cards stacked from the same top line; and a
    server's settings groups flow into two columns. */
-.cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 16px; align-items: start; }
+.cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 var(--gap); align-items: start; }
 .col { min-width: 0; }
 @media (min-width: 1400px) {
   .cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -175,18 +179,24 @@ html[data-mode="light"] .wm-a { fill: #2ba595; } html[data-mode="light"] .wm-a2 
 .crumbs a { color: var(--muted); text-decoration: none; }
 .crumbs a:hover { color: var(--text); }
 
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 14px; box-shadow: var(--shadow); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: var(--pad); margin-bottom: var(--gap); box-shadow: var(--shadow); }
+/* A card's (and a group's) last shown item adds no space of its own, so
+   every card ends with just its padding. */
+.card > :nth-last-child(1 of :not([hidden])),
+fieldset > :nth-last-child(1 of :not([hidden])) { margin-bottom: 0; }
+/* Rows of buttons and save bars between cards keep the same gap below. */
+.view > .row, .view > form > .row, .view > form > .savebar { margin-bottom: var(--gap); }
 .card.attention { border-color: var(--warn-line); background: var(--warn-bg); }
 .card.attention h2, .card.attention h3 { color: var(--warn); }
 .card.notice { border-color: var(--accent); }
-.banner { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: var(--radius); margin-bottom: 16px; }
+.banner { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: var(--radius); margin-bottom: var(--gap); }
 .banner svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; flex: none; }
 .banner p { margin: 0; }
 .banner.info { background: var(--info-bg); border: 1px solid var(--info-line); color: var(--info); }
 .banner.info button { color: var(--info); border-color: var(--info-strong); }
 
 /* server table */
-.server-table { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--panel); margin-bottom: 18px; box-shadow: var(--shadow); }
+.server-table { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--panel); margin-bottom: var(--gap); box-shadow: var(--shadow); }
 .srow { display: grid; grid-template-columns: minmax(0, 2.3fr) minmax(0, 1.1fr) minmax(0, 1.4fr) minmax(0, 1.1fr) minmax(0, 1.1fr) 168px; gap: 12px; align-items: center; padding: 13px 18px; border-bottom: 1px solid var(--line-2); font-size: 14px; }
 .srow:last-child { border-bottom: none; }
 .srow.head { padding: 9px 18px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel-2) 40%, var(--panel)); }
@@ -207,12 +217,12 @@ html[data-mode="light"] .wm-a { fill: #2ba595; } html[data-mode="light"] .wm-a2 
 .state.stopped { color: var(--muted); }
 .upd { color: var(--link); } .upd.far { color: var(--warn); }
 
-.dash-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.dash-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap); align-items: start; }
 .dash-cards .card { margin: 0; }
 .dash-cards p { margin-bottom: 8px; }
 
 /* one server */
-.server-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.server-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: var(--gap); }
 .server-head h1 { margin: 0; }
 .facts { color: var(--muted); font-size: 14px; margin: 6px 0 0; display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
 .message { font-size: 14px; color: var(--warn); margin: 6px 0 0; }
@@ -220,7 +230,7 @@ html[data-mode="light"] .wm-a { fill: #2ba595; } html[data-mode="light"] .wm-a2 
 .tabs a { padding: 12px 16px; color: var(--muted); text-decoration: none; font-size: 14px; border-bottom: 2px solid transparent; white-space: nowrap; }
 .tabs a:hover { color: var(--text); }
 .tabs a[aria-current="page"] { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
-.overview { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 14px; }
+.overview { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: var(--gap); }
 .overview .col { min-width: 0; }
 .facts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin: 0 0 12px; }
 .facts-grid dt { font-size: 12px; color: var(--muted); }
@@ -257,7 +267,7 @@ html[data-mode="light"] .wm-a { fill: #2ba595; } html[data-mode="light"] .wm-a2 
 .field input[type=number] { width: 110px; }
 .field .ro { color: var(--muted); font-family: var(--mono); font-size: 13px; }
 .field.dirty { box-shadow: inset 3px 0 0 var(--accent); padding-left: 10px; }
-.savebar { position: sticky; bottom: 12px; display: flex; gap: 8px; align-items: center; justify-content: flex-end; padding: 10px 14px; margin: 8px 0 14px; background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius); box-shadow: 0 4px 16px rgba(0, 0, 0, .18); }
+.savebar { position: sticky; bottom: 12px; display: flex; gap: 8px; align-items: center; justify-content: flex-end; padding: 10px 14px; margin: 8px 0 var(--gap); background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius); box-shadow: 0 4px 16px rgba(0, 0, 0, .18); }
 .savebar span { margin-right: auto; font-size: 14px; }
 details.card summary { cursor: pointer; font-weight: 600; }
 textarea { width: 100%; font: 12.5px/1.45 var(--mono); background: var(--console-bg); color: var(--console-text); border-color: var(--line); padding: 10px; margin: 8px 0; resize: vertical; }
@@ -326,6 +336,7 @@ legend { font-size: 13px; font-weight: 600; color: var(--soft); margin-bottom: 1
   /* Banners: the words across the top, their buttons underneath. */
   .banner { flex-wrap: wrap; }
   .banner p { flex: 1 1 calc(100% - 34px); }
+  :root { --gap: 12px; --pad: 16px; }
   .sidebar { display: none; }
   .content { padding: 18px 16px 96px; }
   h1 { font-size: 24px; }
@@ -446,7 +457,8 @@ html[data-style="treehouse"] button.primary, html[data-style="treehouse"] a.butt
 html[data-style="treehouse"] button.go { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 html[data-style="treehouse"] input, html[data-style="treehouse"] select { min-height: 46px; border-radius: 12px; border-width: 2px; }
 html[data-style="treehouse"] select { height: 46px; }
-html[data-style="treehouse"] .card { border-radius: 18px; border-width: 2px; padding: 20px; }
+html[data-style="treehouse"] { --pad: 20px; }
+html[data-style="treehouse"] .card { border-radius: 18px; border-width: 2px; }
 html[data-style="treehouse"] .banner { border-radius: 16px; border-width: 2px; }
 html[data-style="treehouse"] .people button, html[data-style="treehouse"] .people a.button { min-height: 40px; font-size: 14px; }
 
@@ -473,7 +485,7 @@ html[data-style="treehouse"] .brand .wordmark { height: 18px; }
 
 /* server tiles on the dashboard */
 html[data-style="treehouse"] #servers {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 18px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: var(--gap);
   border: none; background: none; box-shadow: none; overflow: visible;
 }
 html[data-style="treehouse"] #servers .srow.head { display: none; }
@@ -515,7 +527,7 @@ html[data-style="treehouse"] .style-card { border-radius: 16px; }
 
 @media (max-width: 860px) {
   html[data-style="treehouse"] h1 { font-size: 27px; }
-  html[data-style="treehouse"] #servers { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  html[data-style="treehouse"] #servers { grid-template-columns: minmax(0, 1fr); }
   html[data-style="treehouse"] #servers .srow { padding: 30px 16px 16px; }
   html[data-style="treehouse"] #servers .srow .acts a.button { display: none; }
   html[data-style="treehouse"] #servers .srow .acts button { flex: 1; min-height: 50px; }
