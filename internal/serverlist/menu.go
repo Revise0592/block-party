@@ -169,7 +169,7 @@ func (m *menu) showMain(reason string, onlyFirst bool) {
 				continue
 			}
 			if p.Running {
-				house = append(house, Server{Name: p.Name, Address: m.host, Port: uint16(p.Port)})
+				house = append(house, Server{Name: p.Name, Address: m.host, Port: uint16(p.Port), NetherNetPort: uint16(p.NetherNetPort)})
 			}
 		}
 	}

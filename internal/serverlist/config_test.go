@@ -53,7 +53,7 @@ func TestConnectionSettings(t *testing.T) {
 		wantConnection     string
 		wantNetherNetNames int
 	}{
-		{map[string]string{}, true, false, "raknet", 0},
+		{map[string]string{}, true, true, "both", 0},
 		{map[string]string{"CONNECTION": "nethernet"}, false, true, "nethernet", 0},
 		{map[string]string{"CONNECTION": "both", "NETHERNET_NAMES": "play.galaxite.net, mco.lbsg.net"}, true, true, "both", 2},
 		{map[string]string{"CONNECTION": "raknet", "NETHERNET_NAMES": "play.galaxite.net"}, true, false, "raknet", 0},

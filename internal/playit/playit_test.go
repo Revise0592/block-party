@@ -412,21 +412,3 @@ func TestEnsureAgentChecksTheDownload(t *testing.T) {
 		t.Errorf("downloaded again: %v", err)
 	}
 }
-
-func TestPlayitOnlyIsKept(t *testing.T) {
-	dir := t.TempDir()
-	m := New(Options{Dir: dir})
-	if err := m.SetOnly("the-gaff", "java"); err == nil {
-		t.Error("accepted a protocol that isn't tcp or udp")
-	}
-	if err := m.SetOnly("the-gaff", "tcp"); err != nil {
-		t.Fatal(err)
-	}
-	if New(Options{Dir: dir}).Only("the-gaff") != "tcp" {
-		t.Error("choice not kept across a restart")
-	}
-	m.SetOnly("the-gaff", "")
-	if New(Options{Dir: dir}).Only("the-gaff") != "" {
-		t.Error("choice not cleared")
-	}
-}

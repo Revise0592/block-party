@@ -59,8 +59,9 @@ PS5, and the panel runs a family's servers day to day. See the
   there: the panel finds your internet address, opens the router's ports with
   UPnP (or lists the forwards to add by hand), and writes an invite that tells
   a friend how to join from a PC, phone or console. Behind a router you can't
-  forward ports on, use [playit.gg](https://playit.gg) instead: the panel
-  runs its agent and gives each open server its own address. See
+  forward ports on, use [playit.gg](https://playit.gg) instead (Java servers
+  only for now): the panel runs its agent and gives each open Java server its
+  own address. See
   [Friends outside the house](#friends-outside-the-house).
 - **Java Edition servers (Paper).** Add a server and pick Java: the panel
   downloads Paper and the Java it needs, and Java servers get the same
@@ -103,10 +104,11 @@ PS5, and the panel runs a family's servers day to day. See the
   has "Connect to a server…" for typing an address. Players can save servers
   to their own list and remove them again. The house servers stay under the
   owner's control.
-- **RakNet by default, NetherNet ready.** Consoles join the list over RakNet
-  today. NetherNet (Minecraft's newer connection type) is built in behind a
-  setting in case consoles stop falling back to RakNet. See
-  [the proof-of-concept notes](docs/proof-of-concept.md) for why.
+- **Ready for NetherNet.** From Minecraft 26.60 (October 27, 2026), players
+  join servers over NetherNet, Minecraft's newer connection type, instead of
+  RakNet. The server list takes both, and so do Bedrock servers and consoles
+  on Java servers (Geyser). See [the proof-of-concept notes](docs/proof-of-concept.md)
+  for what's been tested.
 
 ## Install
 
@@ -244,7 +246,7 @@ server's Overview.
 
 ### Friends outside the house
 
-Open **Help → Friends outside the house** (owner only):
+Open **Settings → Friends outside the house** (owner only):
 
 1. Tick **Let friends outside the house join**. For the address friends use,
    type your hostname (your own domain, or a dynamic DNS name like
@@ -253,10 +255,22 @@ Open **Help → Friends outside the house** (owner only):
    elsewhere, or if your internet provider shares your address (CGNAT), which
    stops port forwarding from working at all.
 2. Tick **Open the ports on the router automatically** if UPnP is on in your
-   router. Otherwise the page lists each forward to add by hand: UDP, to the
+   router. Otherwise the page lists each forward to add by hand, to the
    container's IP. **Never forward 8443**; the panel stays inside the house.
+   Each kind of server needs:
+
+   | Server | Forwards |
+   | --- | --- |
+   | Bedrock on port P | UDP and TCP P, plus a block of 20 UDP ports from 49152 (the server's Overview shows which) |
+   | Java | TCP P |
+   | Java with console players | TCP and UDP P, and TCP and UDP P+1 |
+   | Hytale | UDP P |
+
+   The TCP ports and the UDP blocks are for NetherNet, which Minecraft uses
+   from version 26.60.
 3. For friends on consoles, tick **Let friends' consoles use this home's
-   server list**. This forwards 19132 (UDP) and 53 (UDP and TCP). A friend
+   server list**. This forwards 19132 (UDP and TCP), UDP 19300-19319, and 53
+   (UDP and TCP). A friend
    sets their console's primary DNS to your address and secondary DNS to
    1.1.1.1, joins a featured server, and sees the servers open to them. The
    panel answers only the featured-server names for consoles outside; every
@@ -289,19 +303,19 @@ version and checked against its published hash) into `/data/playit`, and runs
 it inside the container while a server is open, so nothing else needs
 installing on Unraid.
 
-- A Java server gets a TCP tunnel, plus a UDP one for console players when
-  they're on. A Bedrock or Hytale server gets one UDP tunnel. playit.gg's free
-  plan allows 4 TCP and 4 UDP tunnels; the page shows how many are in use.
-- A Java server with console players can keep just one of its two tunnels:
-  **playit.gg tunnels** on its Overview offers Java and Bedrock, Java only,
-  or Bedrock only (console and Bedrock players through Geyser). With Java
-  only, console friends outside can't join, though Geyser still works for
-  consoles at home. Switching back makes a new tunnel, with a new address.
+- **Java servers only, for Java players.** From Minecraft 26.60 (October 27,
+  2026) Bedrock players and consoles join over NetherNet, which playit.gg's
+  free plan can't carry. So through playit.gg a Java server gets one TCP
+  tunnel for Java players, and Bedrock and Hytale servers can't be opened to
+  friends outside (their Overview says so). Consoles and Bedrock players at
+  home still join as usual, including Java servers through Geyser. To let
+  friends outside join on Bedrock or a console, use the router instead.
+- playit.gg's free plan allows 4 TCP tunnels; the page shows how many are in
+  use.
 - Closing a server turns its tunnel off but keeps it, so its address stays
   the same when it's opened again. Deleting the server deletes its tunnel,
-  and **Unlink playit.gg** deletes all of the panel's tunnels.
-- Console friends join with the BedrockConnect steps in the invite (the
-  home's own console server list isn't offered outside with playit.gg).
+  and **Unlink playit.gg** deletes all of the panel's tunnels. Tunnels an
+  earlier version made for Bedrock and consoles are deleted on their own.
 - The agent's latest log lines are under **Agent log**, if something isn't
   working.
 
@@ -365,13 +379,16 @@ needed) and [ViaVersion](https://hangar.papermc.io/ViaVersion/ViaVersion)
 speaks). Turn it off per server under **Settings → Console players**.
 
 - Consoles use the **same port**, over UDP (Java players use TCP), and the
-  server shows up in the console server list while it runs.
+  server shows up in the console server list while it runs. Minecraft 26.60
+  and later join over NetherNet instead, on the **next port up** (TCP and
+  UDP); the list sends consoles to the right one, and the invite tells
+  friends which port to type.
 - On the **Players** tab, pick **Console, phone or tablet** and type their
   gamertag. On the server they're called `.Gamer_Tag` (a dot in front,
   spaces become `_`), and show with a *console* badge. A console player is
   made an operator when they next join.
-- Friends outside: opening the server forwards both TCP and UDP, and the
-  invite covers PCs and consoles.
+- Friends outside: opening the server forwards its port (TCP and UDP) and the
+  next one up, and the invite covers PCs and consoles.
 - Bedrock updates often and consoles update themselves, so Geyser has to
   keep up: a new Geyser version shows as an update ready, and overnight
   updates install it (even on a server whose Minecraft version is held).
@@ -414,7 +431,7 @@ panel yet (the Console tab works for anything).
 
 ### Notifications
 
-Under **Help → Notifications** (owner only), turn on any of:
+Under **Settings → Notifications** (owner only), turn on any of:
 
 - **Phone (ntfy).** Install the free ntfy app and subscribe to the topic the
   panel shows (it makes up one that's hard to guess). Works with ntfy.sh or
@@ -440,7 +457,7 @@ by the panel, and never shown in the page again.
 
 ### Overnight updates and restarts
 
-Under **Help → Overnight updates and restarts** (owner only) choose:
+Under **Settings → Overnight updates and restarts** (owner only) choose:
 
 - **Update servers when a new Bedrock version is out.** Each server is backed
   up first and started again if it was running. Consoles and phones update
@@ -591,13 +608,14 @@ apply without a restart.
 | `UPNP_GATEWAY` | empty | The router's UPnP description URL, if searching the network doesn't find it |
 | `PLAYIT_AGENT` | empty | Run this playit.gg agent instead of downloading playit's (for testing) |
 | `DNS_ANSWER_INTERNET` | `false` | Older setting: always answer the featured names for consoles on the internet (with `PUBLIC_IP`). The **Friends on Xbox, PlayStation and Switch** switch does this now |
-| `CONNECTION` | `raknet` | `raknet`, `nethernet` or `both` |
+| `CONNECTION` | `both` | `raknet`, `nethernet` or `both` |
 | `NETHERNET_NAMES` | empty | With `both`, offer NetherNet only for these names |
 | `SIGNALING` | `auto` | NetherNet join endpoint: `auto` (HTTPS and HTTP), `http` or `tls` |
 | `EXTRA_SIGNALING_PORTS` | `80,443` | More TCP ports for the NetherNet endpoint; `none` for none |
-| `RTC_PORT_MIN`, `RTC_PORT_MAX` | `19300`, `19399` | UDP ports for NetherNet gameplay |
+| `RTC_PORT_MIN`, `RTC_PORT_MAX` | `19300`, `19319` | UDP ports for the list's NetherNet connections |
 | `LOAD_PRESET` | `standard` | How the empty menu world is built: `standard` or `bedrockconnect` |
 | `LOG_LEVEL` | `info` | `debug` for more detail |
+| `PANEL_UPDATE_API` | GitHub | Where the panel looks for newer releases; `off` to never look |
 
 ## Building from source
 

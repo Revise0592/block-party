@@ -162,8 +162,14 @@ func handleSession(cfg *Config, l *minecraft.Listener, conn *minecraft.Conn, tra
 			if target == nil {
 				continue
 			}
+			// A console that came over NetherNet joins over NetherNet, which
+			// some servers take on another port.
+			port := target.Port
+			if transport == "NetherNet" && target.NetherNetPort != 0 {
+				port = target.NetherNetPort
+			}
 			log.Info("player picked a server; sending the console there",
-				"server", target.Name, "address", target.Address, "port", target.Port)
+				"server", target.Name, "address", target.Address, "port", port)
 			if cfg.OnPick != nil {
 				// Pass the identity that was actually checked when there is one.
 				name, xuid := ident.DisplayName, ident.XUID
@@ -172,7 +178,7 @@ func handleSession(cfg *Config, l *minecraft.Listener, conn *minecraft.Conn, tra
 				}
 				cfg.OnPick(name, xuid, check.Verified, target.Address, target.Port)
 			}
-			if err := conn.WritePacket(&packet.Transfer{Address: target.Address, Port: target.Port}); err != nil {
+			if err := conn.WritePacket(&packet.Transfer{Address: target.Address, Port: port}); err != nil {
 				log.Warn("could not send the transfer", "error", err)
 			}
 			_ = conn.Flush()

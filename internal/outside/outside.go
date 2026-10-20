@@ -62,43 +62,62 @@ type Server struct {
 	Open    bool   // the server is marked open to friends outside
 	Problem string // why it can't be open right now ("the allowlist is off"), or ""
 	Java    bool   // a Java server: its port is TCP
-	// JavaConsoles: a Java server that also takes console players (Geyser),
-	// on the same port number over UDP.
-	JavaConsoles bool
-	Hytale       bool // a Hytale server (UDP)
+	// JavaConsoles: a Java server that also takes console players (Geyser):
+	// RakNet on the same port number over UDP, NetherNet on NetherNetPort
+	// (TCP and UDP).
+	JavaConsoles  bool
+	NetherNetPort int
+	// Bedrock: a Bedrock server. NetherNet signaling is TCP on its port,
+	// gameplay UDP on UDPPorts (first and last); RakNet is UDP on its port.
+	Bedrock  bool
+	UDPPorts [2]int
 }
 
-// Protocols returns the protocols the server's port needs forwarded.
-func (s Server) Protocols() []string {
-	switch {
-	case s.Java && s.JavaConsoles:
-		return []string{"TCP", "UDP"}
-	case s.Java:
-		return []string{"TCP"}
+// Forwards returns the forwards the server needs.
+func (s Server) Forwards() []Port {
+	var out []Port
+	add := func(port int, proto string) {
+		if port > 0 {
+			out = append(out, Port{Port: port, Proto: proto, For: s.Name})
+		}
 	}
-	return []string{"UDP"}
-}
-
-// PlayitTunnels returns the playit.gg tunnels the server needs. only ("tcp"
-// or "udp") keeps just one of a Java server's two when it takes console
-// players too; "" keeps both.
-func (s Server) PlayitTunnels(open bool, only string) []playit.Want {
-	var out []playit.Want
-	for _, proto := range s.Protocols() {
-		w := playit.Want{ServerID: s.ID, Name: s.Name, Port: s.Port, Proto: strings.ToLower(proto), Open: open}
-		if only != "" && s.Java && s.JavaConsoles && w.Proto != only {
-			continue
+	switch {
+	case s.Java:
+		add(s.Port, "TCP")
+		if s.JavaConsoles {
+			add(s.Port, "UDP")
+			add(s.NetherNetPort, "TCP")
+			add(s.NetherNetPort, "UDP")
 		}
-		switch {
-		case proto == "TCP":
-			w.Type = playit.TypeJava
-		case !s.Hytale:
-			w.Type = playit.TypeBedrock // Bedrock, or Geyser on a Java server
+	case s.Bedrock:
+		add(s.Port, "UDP")
+		add(s.Port, "TCP")
+		if s.UDPPorts[0] > 0 {
+			for p := s.UDPPorts[0]; p <= s.UDPPorts[1]; p++ {
+				add(p, "UDP")
+			}
 		}
-		out = append(out, w)
+	default: // Hytale
+		add(s.Port, "UDP")
 	}
 	return out
 }
+
+// PlayitTunnels returns the playit.gg tunnels the server needs: one TCP
+// tunnel for a Java server, and none for anything else. From Minecraft
+// 26.60 Bedrock players (and consoles through Geyser) join over NetherNet,
+// which playit.gg's free plan can't carry, so friends outside only reach
+// Java servers, as Java players, through it.
+func (s Server) PlayitTunnels(open bool) []playit.Want {
+	if !s.Java {
+		return nil
+	}
+	return []playit.Want{{ServerID: s.ID, Name: s.Name, Port: s.Port, Proto: "tcp", Type: playit.TypeJava, Open: open}}
+}
+
+// PlayitCarries reports whether friends outside can reach the server
+// through playit.gg (see PlayitTunnels).
+func (s Server) PlayitCarries() bool { return s.Java }
 
 // Port is one forward on the router.
 type Port struct {
@@ -168,7 +187,10 @@ type Options struct {
 	DataDir  string
 	LocalIP  netip.Addr // this container's address on the home network
 	ListPort int        // the console server list (19132)
-	DNSPort  int        // the built-in DNS (53); 0 when it's off
+	// ListUDPPorts is the console server list's NetherNet gameplay range
+	// (first and last), forwarded with it for friends' consoles.
+	ListUDPPorts [2]int
+	DNSPort      int // the built-in DNS (53); 0 when it's off
 	// StaticIP is the home's address when it's set by hand (PUBLIC_IP).
 	StaticIP netip.Addr
 	// LookupURLs answer with the caller's internet address as plain text.
@@ -440,15 +462,16 @@ func (m *Manager) reconcile(ctx context.Context) (busy bool) {
 	sort.Slice(list, func(i, j int) bool { return strings.ToLower(list[i].Name) < strings.ToLower(list[j].Name) })
 	for _, s := range list {
 		ss := ServerState{ID: s.ID, Name: s.Name, Port: s.Port, Open: s.Open, Problem: s.Problem}
-		reached := s.Open && s.Problem == "" && set.Enabled
-		tunnels = append(tunnels, s.PlayitTunnels(reached && viaPlayit, m.pl.Only(s.ID))...)
+		if viaPlayit && set.Enabled && s.Open && s.Problem == "" && !s.PlayitCarries() {
+			ss.Problem = "playit.gg only carries Java servers for now"
+		}
+		reached := s.Open && s.Problem == "" && set.Enabled && (!viaPlayit || s.PlayitCarries())
+		tunnels = append(tunnels, s.PlayitTunnels(reached && viaPlayit)...)
 		if reached {
 			ss.Reached = true
 			if !viaPlayit {
 				open[s.Port] = true
-				for _, proto := range s.Protocols() {
-					want = append(want, Port{Port: s.Port, Proto: proto, For: s.Name})
-				}
+				want = append(want, s.Forwards()...)
 			}
 		}
 		st.Servers = append(st.Servers, ss)
@@ -471,7 +494,14 @@ func (m *Manager) reconcile(ctx context.Context) (busy bool) {
 		return busy
 	}
 	if set.Enabled && set.Consoles {
-		want = append(want, Port{Port: m.opts.ListPort, Proto: "UDP", For: "console server list"})
+		// RakNet (UDP) and NetherNet (TCP signaling, UDP gameplay).
+		want = append(want, Port{Port: m.opts.ListPort, Proto: "UDP", For: "console server list"},
+			Port{Port: m.opts.ListPort, Proto: "TCP", For: "console server list"})
+		if r := m.opts.ListUDPPorts; r[0] > 0 {
+			for p := r[0]; p <= r[1]; p++ {
+				want = append(want, Port{Port: p, Proto: "UDP", For: "console server list"})
+			}
+		}
 		if m.opts.DNSPort > 0 {
 			want = append(want, Port{Port: m.opts.DNSPort, Proto: "UDP", For: "console DNS"},
 				Port{Port: m.opts.DNSPort, Proto: "TCP", For: "console DNS"})

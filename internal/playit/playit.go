@@ -119,9 +119,6 @@ type Manager struct {
 type saved struct {
 	AgentID string               `json:"agentID,omitempty"`
 	Tunnels map[string]tunnelRec `json:"tunnels"`
-	// Only: servers that take Java and console players but want just one
-	// of their tunnels, "tcp" (Java) or "udp" (Bedrock and consoles).
-	Only map[string]string `json:"only,omitempty"`
 }
 
 type tunnelRec struct {
@@ -189,34 +186,6 @@ func (m *Manager) Status() Status {
 		st.Tunnels = []TunnelState{}
 	}
 	return st
-}
-
-// Only returns which of a server's tunnels it keeps when it has two:
-// "tcp", "udp", or "" for both.
-func (m *Manager) Only(serverID string) string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.saved.Only[serverID]
-}
-
-// SetOnly chooses which of a server's tunnels it keeps ("" for both). The
-// other one is deleted at the next Sync.
-func (m *Manager) SetOnly(serverID, proto string) error {
-	if proto != "" && proto != "tcp" && proto != "udp" {
-		return errors.New(`choose "tcp", "udp" or both`)
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.saved.Only == nil {
-		m.saved.Only = map[string]string{}
-	}
-	if proto == "" {
-		delete(m.saved.Only, serverID)
-	} else {
-		m.saved.Only[serverID] = proto
-	}
-	m.saveLocked()
-	return nil
 }
 
 // Tunnel returns the state of a server's tunnel for a protocol.
@@ -325,7 +294,7 @@ func (m *Manager) link(ctx context.Context, secret string) error {
 	m.secret = secret
 	if m.saved.AgentID != rd.AgentID {
 		// Another playit agent: the old tunnels aren't its.
-		m.saved = saved{AgentID: rd.AgentID, Tunnels: map[string]tunnelRec{}, Only: m.saved.Only}
+		m.saved = saved{AgentID: rd.AgentID, Tunnels: map[string]tunnelRec{}}
 		m.tunnels = map[string]TunnelState{}
 	}
 	m.status = Status{AccountStatus: rd.AccountStatus, AccountNote: accountNote(rd.AccountStatus)}
@@ -360,7 +329,7 @@ func (m *Manager) Unlink(ctx context.Context) error {
 	}
 	m.mu.Lock()
 	m.secret = ""
-	m.saved = saved{Tunnels: map[string]tunnelRec{}, Only: m.saved.Only}
+	m.saved = saved{Tunnels: map[string]tunnelRec{}}
 	m.tunnels = map[string]TunnelState{}
 	m.status = Status{}
 	m.saveLocked()

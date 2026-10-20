@@ -595,8 +595,29 @@ func (s *Server) javaCommand() (string, []string, error) {
 	}
 	if s.consolesLive || fileExists(filepath.Join(s.dir(), "plugins", consolePlugins[0].File)) {
 		// Geyser takes console players on the server's own port (UDP), never
-		// its default (the console server list's port).
-		args = append(args, "-DgeyserUdpPort="+strconv.Itoa(s.meta.Port))
+		// its default (the console server list's port), over RakNet; and
+		// over NetherNet (Minecraft 26.60 and later only use that) on the
+		// next port up, TCP for signaling and UDP for gameplay, since the
+		// Java server has TCP on its own port.
+		nn := strconv.Itoa(GeyserNetherNetPort(s.meta.Port))
+		args = append(args, "-DgeyserUdpPort="+strconv.Itoa(s.meta.Port),
+			"-DgeyserTransport=both", "-DgeyserSignalingPort="+nn, "-DgeyserWebrtcPort="+nn)
+		// Which addresses consoles are told to connect to: home, and the
+		// internet address while friends outside can join.
+		addrs := s.m.hostAddresses()
+		var adv []string
+		for _, a := range []string{addrs.Home, addrs.Internet} {
+			if a == "" {
+				continue
+			}
+			if strings.Contains(a, ":") {
+				a = "[" + a + "]"
+			}
+			adv = append(adv, a+":"+nn)
+		}
+		if len(adv) > 0 {
+			args = append(args, "-DgeyserAdvertiseAddresses="+strings.Join(adv, ","))
+		}
 	}
 	args = append(args,
 		"-jar", paperJar, "--nogui", "--world-container", "worlds")

@@ -289,7 +289,8 @@ func TestOutsideAccessPermissions(t *testing.T) {
 		t.Error("allowlist turned off while open")
 	}
 
-	// Through playit.gg: only the owner links it, and until it's linked the
+	// Through playit.gg: only the owner links it. A Bedrock server can't be
+	// reached through it (NetherNet), and until it's linked a Java
 	// server's view says so instead of showing the home's address.
 	for _, path := range []string{"/api/outside/playit/claim", "/api/outside/playit/claim/check"} {
 		if w := call(h, "POST", path, "", ava); w.Code != 403 {
@@ -304,17 +305,13 @@ func TestOutsideAccessPermissions(t *testing.T) {
 	}
 	v = serverOutsideView{}
 	json.Unmarshal(call(h, "GET", "/api/servers/ava/outside", "", ava).Body.Bytes(), &v)
-	if !v.Playit || v.Opened || v.Address != "" || !strings.Contains(v.PortError, "isn't linked") {
+	if !v.Playit || !v.PlayitCant || v.Reached || v.Opened || v.Address != "" || v.Forwards != nil {
 		t.Errorf("playit view: %+v", v)
 	}
-	if w := call(h, "POST", "/api/servers/ava/outside/tunnels", `{"only":"tcp"}`, sam); w.Code != 403 {
-		t.Errorf("run-level kid chose tunnels: %d", w.Code)
-	}
-	if w := call(h, "POST", "/api/servers/ava/outside/tunnels", `{"only":"java"}`, ava); w.Code != 400 {
-		t.Errorf("bad tunnel choice: %d %s", w.Code, w.Body)
-	}
-	if w := call(h, "POST", "/api/servers/ava/outside/tunnels", `{"only":"udp"}`, ava); w.Code != 200 || s.out.Playit().Only("ava") != "udp" {
-		t.Errorf("tunnel choice: %d %s", w.Code, w.Body)
+	jv := serverOutsideView{Open: true, Java: true, JavaConsoles: true, Address: "203.0.113.5", Port: 25565, BedrockPort: 25566}
+	s.playitView(&jv, "java")
+	if !jv.Playit || jv.PlayitCant || jv.Opened || jv.Address != "" || jv.BedrockPort != 0 || !strings.Contains(jv.PortError, "isn't linked") {
+		t.Errorf("Java playit view: %+v", jv)
 	}
 	if w := call(h, "POST", "/api/outside/playit/claim/check", "", owner); w.Code != 200 || !strings.Contains(w.Body.String(), `"none"`) {
 		t.Errorf("claim check with no claim: %d %s", w.Code, w.Body)

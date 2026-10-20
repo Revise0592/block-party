@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.2.1
+
+From [Revise0592's fork](https://github.com/Revise0592/block-party):
+
+- **Backups of running Java servers on Paper for Minecraft 26 work again.**
+  Paper 26 logs "System chat: Saved the game", which the panel didn't
+  recognise, so every backup of a running Paper 26 server waited a minute and
+  failed.
+- **One spacing on every page**: the same gap between boxes and the same
+  padding inside them, a little tighter on phones.
+
+## 1.2.0
+
+- **A Settings page** for the owner, in the menu: friends outside the house,
+  people, overnight updates, notifications, importing servers and the setup
+  guide. Help is now just help.
+- **A notice when a newer Block Party is out**, on the Servers page and in
+  Settings, with what's new and how to update. The panel checks GitHub's
+  release list twice a day and downloads nothing (`PANEL_UPDATE_API=off`
+  turns the check off).
+- **A server's Settings tab** lines its two columns up at the top, and every
+  setting's control is the same height (Safari drew menus shorter).
+  Read-only values show as On and Off, and NetherNet and RakNet by name.
+
+## 1.1.1
+
+- Java servers on Paper for Minecraft 26 show who's playing again: it logs
+  joins and leaves as "System chat: Steve joined the game". From
+  [Revise0592's fork](https://github.com/Revise0592/block-party).
+
+## 1.1.0
+
+Ready for Minecraft 26.60 (October 27, 2026), which joins servers over
+NetherNet instead of RakNet.
+
+- **Consoles on Java servers**: Geyser now takes NetherNet as well as RakNet,
+  on the server's port + 1 (TCP and UDP). The console server list sends
+  NetherNet players there, and the invite tells friends which port to type.
+  Restart Java servers with console players to pick it up.
+- **Bedrock servers** get a fixed block of 20 UDP ports for NetherNet
+  (from 49152), so they can be forwarded for friends outside, and tell
+  players outside the home's internet address.
+- **The console server list** takes NetherNet as well as RakNet
+  (`CONNECTION` now defaults to `both`), on UDP 19300-19319.
+- **Friends outside the house** forwards everything NetherNet needs, and
+  lists the forwards to add by hand, with ranges kept to one line.
+
 ## 1.0.0
 
 The first release of Block Party: one container that runs a family's game

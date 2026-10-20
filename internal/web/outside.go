@@ -2,9 +2,9 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/ScottSchneck/block-party/internal/outside"
@@ -25,7 +25,6 @@ func (s *Server) outsideRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/outside/playit", ownerOnly(s.unlinkPlayit))
 	mux.HandleFunc("GET /api/servers/{id}/outside", s.withServer(levelRun, s.serverOutside))
 	mux.HandleFunc("POST /api/servers/{id}/outside", s.withServer(levelCare, s.setServerOutside))
-	mux.HandleFunc("POST /api/servers/{id}/outside/tunnels", s.withServer(levelCare, s.setServerTunnels))
 }
 
 // OutsideServers lists the panel's servers for the outside package.
@@ -37,7 +36,7 @@ func OutsideServers(mgr *servers.Manager) func() []outside.Server {
 			if !ok {
 				continue
 			}
-			s := outside.Server{ID: st.ID, Name: st.Name, Port: st.Port, Open: st.Outside, Java: st.Type == servers.TypeJava, JavaConsoles: st.Consoles, Hytale: st.Type == servers.TypeHytale}
+			s := outsideServer(st)
 			if st.Outside {
 				s.Problem = srv.OutsideProblem()
 			}
@@ -45,6 +44,43 @@ func OutsideServers(mgr *servers.Manager) func() []outside.Server {
 		}
 		return list
 	}
+}
+
+// outsideServer is a server as the outside package sees it: which ports it
+// needs forwarded.
+func outsideServer(st servers.Status) outside.Server {
+	s := outside.Server{ID: st.ID, Name: st.Name, Port: st.Port, Open: st.Outside}
+	switch st.Type {
+	case servers.TypeJava:
+		s.Java, s.JavaConsoles = true, st.Consoles
+		if st.Consoles {
+			s.NetherNetPort = servers.GeyserNetherNetPort(st.Port)
+		}
+	case servers.TypeHytale:
+	default:
+		first, last := servers.BedrockUDPPorts(st.Port)
+		s.Bedrock, s.UDPPorts = true, [2]int{first, last}
+	}
+	return s
+}
+
+// forwardsText describes forwards for people, ranges joined up:
+// "TCP 19136", "UDP 49152-49171".
+func forwardsText(ports []outside.Port) []string {
+	var out []string
+	for i := 0; i < len(ports); {
+		j := i
+		for j+1 < len(ports) && ports[j+1].Proto == ports[i].Proto && ports[j+1].Port == ports[j].Port+1 {
+			j++
+		}
+		if j > i {
+			out = append(out, fmt.Sprintf("%s %d-%d", ports[i].Proto, ports[i].Port, ports[j].Port))
+		} else {
+			out = append(out, fmt.Sprintf("%s %d", ports[i].Proto, ports[i].Port))
+		}
+		i = j + 1
+	}
+	return out
 }
 
 // refresh works outside access out again, waiting a little for the answer.
@@ -140,17 +176,17 @@ type serverOutsideView struct {
 	// JavaConsoles: a Java server consoles can join too (same port, UDP).
 	JavaConsoles bool `json:"javaConsoles,omitempty"`
 	Hytale       bool `json:"hytale,omitempty"`
+	// BedrockPort is the port Bedrock players type (a Java server's takes
+	// NetherNet, which Minecraft 26.60 and later use, on the next port up).
+	BedrockPort int `json:"bedrockPort,omitempty"`
+	// Forwards are the forwards it needs, for setting up by hand.
+	Forwards []string `json:"forwards,omitempty"`
 	// Playit: friends come in through playit.gg. Address and Port are then
-	// the server's playit.gg address; a Java server with consoles has a
-	// second one for them (Bedrock, over UDP).
+	// the server's playit.gg address, for Java players only.
 	Playit bool `json:"playit,omitempty"`
-	// PlayitOnly: a Java server with consoles keeps just its Java ("tcp") or
-	// its Bedrock and console ("udp") tunnel; "" for both. PlayitChoice
-	// says it can choose.
-	PlayitOnly     string `json:"playitOnly,omitempty"`
-	PlayitChoice   bool   `json:"playitChoice,omitempty"`
-	ConsoleAddress string `json:"consoleAddress,omitempty"`
-	ConsolePort    int    `json:"consolePort,omitempty"`
+	// PlayitCant: through playit.gg friends can't reach this server at all
+	// (it isn't a Java server).
+	PlayitCant bool `json:"playitCant,omitempty"`
 }
 
 func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsideView {
@@ -162,7 +198,12 @@ func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsi
 	}
 	v.JavaConsoles = v.Java && ss.Consoles
 	v.Hytale = ss.Type == servers.TypeHytale
-	protos := outside.Server{Java: v.Java, JavaConsoles: v.JavaConsoles}.Protocols()
+	need := outsideServer(ss).Forwards()
+	v.Forwards = forwardsText(need)
+	v.BedrockPort = ss.Port
+	if v.JavaConsoles {
+		v.BedrockPort = servers.GeyserNetherNetPort(ss.Port)
+	}
 	// The address consoles outside use as their DNS: where the address
 	// friends use leads (it's never a home address; see outside).
 	v.ConsoleDNS = st.PublicIP
@@ -177,10 +218,10 @@ func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsi
 			v.Reached = x.Reached && v.Problem == ""
 		}
 	}
-	// Opened only when every protocol it needs is.
+	// Opened only when every forward it needs is.
 	opened := 0
 	for _, p := range st.Ports {
-		if p.Port.Port != ss.Port || !slices.Contains(protos, p.Proto) {
+		if !slices.ContainsFunc(need, func(n outside.Port) bool { return n.Port == p.Port.Port && n.Proto == p.Proto }) {
 			continue
 		}
 		if p.Opened {
@@ -190,67 +231,31 @@ func (s *Server) outsideView(srv *servers.Server, st outside.Status) serverOutsi
 			v.PortError = p.Error
 		}
 	}
-	v.Opened = opened == len(protos)
+	v.Opened = opened == len(need)
 	if st.Settings.Playit {
-		s.playitView(&v, ss.ID, protos)
+		s.playitView(&v, ss.ID)
 	}
 	return v
 }
 
-// playitView fills in a server's playit.gg addresses. The first protocol's
-// tunnel is the main address (Java's, on a Java server).
-func (s *Server) playitView(v *serverOutsideView, id string, protos []string) {
+// playitView fills in a server's playit.gg address. Only Java servers
+// have one, for Java players: Bedrock players and consoles (through Geyser
+// too) join over NetherNet from Minecraft 26.60, which playit.gg's free
+// plan can't carry.
+func (s *Server) playitView(v *serverOutsideView, id string) {
 	v.Playit, v.UPnP, v.Shared, v.Consoles, v.ConsoleDNS = true, false, false, false, ""
-	v.Address, v.Port, v.Opened, v.PortError = "", 0, true, ""
-	if v.JavaConsoles {
-		v.PlayitChoice = true
-		v.PlayitOnly = s.out.Playit().Only(id)
-		// From outside, it's what the one tunnel lets in.
-		switch v.PlayitOnly {
-		case "tcp":
-			protos, v.JavaConsoles = []string{"TCP"}, false
-		case "udp":
-			protos, v.Java, v.JavaConsoles = []string{"UDP"}, false, false
-		}
+	v.Address, v.Port, v.BedrockPort, v.Forwards, v.Opened, v.PortError = "", 0, 0, nil, false, ""
+	if !v.Java {
+		v.PlayitCant, v.Reached = true, false
+		return
 	}
-	for i, proto := range protos {
-		t, ok := s.out.Playit().Tunnel(id, strings.ToLower(proto))
-		if !ok || !t.Ready {
-			v.Opened = false
-		}
-		if v.PortError == "" && ok {
-			v.PortError = t.Problem
-		}
-		if i == 0 {
-			v.Address, v.Port = t.Address, t.PublicPort
-		} else if t.Address != "" {
-			v.ConsoleAddress, v.ConsolePort = t.Address, t.PublicPort
-		}
+	t, ok := s.out.Playit().Tunnel(id, "tcp")
+	if ok {
+		v.Address, v.Port, v.Opened, v.PortError = t.Address, t.PublicPort, t.Ready, t.Problem
 	}
 	if !s.out.Playit().Linked() {
 		v.Opened, v.PortError = false, "playit.gg isn't linked yet"
 	}
-}
-
-// setServerTunnels chooses which playit.gg tunnels a Java server with
-// console players keeps.
-func (s *Server) setServerTunnels(w http.ResponseWriter, r *http.Request, srv *servers.Server) {
-	var req struct {
-		Only string `json:"only"`
-	}
-	if !readBody(w, r, &req) {
-		return
-	}
-	was := s.out.Playit().Only(srv.ID())
-	if err := s.out.Playit().SetOnly(srv.ID(), req.Only); err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	if was != req.Only {
-		s.note(r, srv, map[string]string{"": "made playit.gg tunnels for Java and console players",
-			"tcp": "made a playit.gg tunnel for Java players only", "udp": "made a playit.gg tunnel for Bedrock and console players only"}[req.Only])
-	}
-	writeJSON(w, http.StatusOK, s.outsideView(srv, s.refreshOutside(r)))
 }
 
 func (s *Server) serverOutside(w http.ResponseWriter, r *http.Request, srv *servers.Server) {

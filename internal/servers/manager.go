@@ -75,6 +75,7 @@ type Manager struct {
 	paper      paperCache
 	geyserMC   geyserVersionCache
 	plugins    pluginCache
+	hostAddrs  func() HostAddresses
 	// pluginUpdates: the newest release of each Java plugin, for update notes.
 	pluginUpdates pluginUpdateCache
 	hytale        hytaleAuth
@@ -368,6 +369,9 @@ type Joinable struct {
 	Name    string
 	Port    int
 	Running bool
+	// NetherNetPort is where consoles joining over NetherNet go, when it
+	// isn't Port (a Java server's Geyser: see NetherNetPort).
+	NetherNetPort int
 }
 
 // Joinable returns the panel's servers for the console menu. Only running
@@ -387,7 +391,11 @@ func (m *Manager) Joinable() []Joinable {
 			}
 			running = st.ConsolesLive
 		}
-		out = append(out, Joinable{Name: st.Name, Port: st.Port, Running: running})
+		j := Joinable{Name: st.Name, Port: st.Port, Running: running}
+		if st.Type == TypeJava {
+			j.NetherNetPort = GeyserNetherNetPort(st.Port)
+		}
+		out = append(out, j)
 	}
 	return out
 }
@@ -532,10 +540,40 @@ func (m *Manager) freePort() (int, error) {
 	return 0, errors.New("no free ports left: the panel runs up to 33 servers")
 }
 
-// udpRange is the NetherNet gameplay port range for a server, so servers in
-// the same container never compete for the same ports.
-func udpRange(port int) string {
+// BedrockUDPPorts is the UDP port range a Bedrock server uses for NetherNet
+// gameplay (one port per player connected at once), so servers in the same
+// container never compete for ports and each range can be forwarded for
+// friends outside.
+func BedrockUDPPorts(port int) (first, last int) {
 	slot := (port - firstPort) / 2
-	base := 49152 + slot*50
-	return fmt.Sprintf("%d-%d", base, base+49)
+	first = 49152 + slot*50
+	return first, first + bedrockUDPPortCount - 1
+}
+
+// bedrockUDPPortCount is how many players can be connected to one Bedrock
+// server at once over NetherNet.
+const bedrockUDPPortCount = 20
+
+// GeyserNetherNetPort is the port a Java server's Geyser takes NetherNet on,
+// both TCP (signaling) and UDP (gameplay): the next one up, since the Java
+// server itself listens on TCP on its own port (each server has two).
+func GeyserNetherNetPort(port int) int { return port + 1 }
+
+// HostAddresses are this container's addresses, for game servers that tell
+// consoles where to connect: its address at home, and the home's internet
+// address while friends outside can join ("" if not).
+type HostAddresses struct {
+	Home     string
+	Internet string
+}
+
+// SetHostAddresses tells the manager where to find the container's
+// addresses (set once at start, before servers run).
+func (m *Manager) SetHostAddresses(f func() HostAddresses) { m.hostAddrs = f }
+
+func (m *Manager) hostAddresses() HostAddresses {
+	if m.hostAddrs == nil {
+		return HostAddresses{}
+	}
+	return m.hostAddrs()
 }

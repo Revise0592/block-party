@@ -193,9 +193,18 @@ func TestManagerOpensWhatsOpen(t *testing.T) {
 	// Java servers: TCP, and UDP too when consoles can join (Geyser).
 	mu.Lock()
 	list = append(list, Server{ID: "pc", Name: "PC", Port: 19146, Open: true, Java: true},
-		Server{ID: "both", Name: "Both", Port: 19148, Open: true, Java: true, JavaConsoles: true})
+		Server{ID: "both", Name: "Both", Port: 19148, Open: true, Java: true, JavaConsoles: true, NetherNetPort: 19149},
+		Server{ID: "bed", Name: "Bedrock", Port: 19150, Open: true, Bedrock: true, UDPPorts: [2]int{49202, 49204}})
 	mu.Unlock()
 	refresh()
+	for _, k := range []string{"UDP/19149", "TCP/19149", "UDP/19150", "TCP/19150", "UDP/49202", "UDP/49203", "UDP/49204"} {
+		if !f.has(k) {
+			t.Errorf("%s not forwarded: %v", k, f.forwards)
+		}
+	}
+	if f.has("UDP/49205") {
+		t.Errorf("too many forwards: %v", f.forwards)
+	}
 	if !f.has("TCP/19146") || f.has("UDP/19146") || !f.has("TCP/19148") || !f.has("UDP/19148") {
 		t.Errorf("java forwards: %v", f.forwards)
 	}
@@ -203,7 +212,7 @@ func TestManagerOpensWhatsOpen(t *testing.T) {
 	list = list[:3]
 	mu.Unlock()
 	refresh()
-	if f.has("TCP/19146") || f.has("TCP/19148") || f.has("UDP/19148") {
+	if f.has("TCP/19146") || f.has("TCP/19148") || f.has("UDP/19148") || f.has("TCP/19149") || f.has("UDP/49203") {
 		t.Errorf("java forwards not closed: %v", f.forwards)
 	}
 	if st.PublicIP != "203.0.113.5" || st.Shared || st.Router != "Test Router" || st.AddressWarning != "" {
@@ -212,7 +221,7 @@ func TestManagerOpensWhatsOpen(t *testing.T) {
 	// Consoles need the list and DNS too.
 	m.SetSettings(Settings{Enabled: true, UPnP: true, Consoles: true})
 	st = refresh()
-	for _, k := range []string{"UDP/19144", "UDP/19132", "UDP/53", "TCP/53"} {
+	for _, k := range []string{"UDP/19144", "UDP/19132", "TCP/19132", "UDP/53", "TCP/53"} {
 		if !f.has(k) {
 			t.Errorf("%s not forwarded: %v", k, f.forwards)
 		}
@@ -240,7 +249,7 @@ func TestManagerOpensWhatsOpen(t *testing.T) {
 	}
 	// Forwards made are remembered, and closed when the panel stops.
 	m2 := New(opts)
-	if len(m2.mapped) != 3 {
+	if len(m2.mapped) != 4 {
 		t.Errorf("remembered %v", m2.mapped)
 	}
 	// A router that forgets its forwards gets them again (after renewAfter).
@@ -271,7 +280,10 @@ func TestManagerOpensWhatsOpen(t *testing.T) {
 func TestPlayitInsteadOfTheRouter(t *testing.T) {
 	f := newFakeRouter(t)
 	dir := t.TempDir()
-	list := []Server{{ID: "kids", Name: "Kids Survival", Port: 19144, Open: true}}
+	list := []Server{
+		{ID: "kids", Name: "Kids Survival", Port: 19144, Open: true, Bedrock: true},
+		{ID: "java", Name: "Java World", Port: 25565, Open: true, Java: true, JavaConsoles: true},
+	}
 	m := New(Options{
 		DataDir: dir, LocalIP: netip.MustParseAddr("10.0.1.117"), ListPort: 19132,
 		GatewayURL: f.srv.URL + "/desc.xml", Servers: func() []Server { return list },
@@ -281,7 +293,7 @@ func TestPlayitInsteadOfTheRouter(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.Refresh(ctx)
-	if !f.has("UDP/19144") {
+	if !f.has("UDP/19144") || !f.has("TCP/25565") {
 		t.Fatalf("forwards: %v", f.forwards)
 	}
 	// Through playit.gg: the router's forwards are closed, and the console
@@ -293,10 +305,12 @@ func TestPlayitInsteadOfTheRouter(t *testing.T) {
 	if len(f.forwards) != 0 || len(st.Ports) != 0 {
 		t.Errorf("forwards with playit.gg: %v %v", f.forwards, st.Ports)
 	}
-	if i := m.Info(); i.Enabled || i.Consoles || i.Open(19144) {
+	if i := m.Info(); i.Enabled || i.Consoles || i.Open(19144) || i.Open(25565) {
 		t.Errorf("info with playit.gg: %+v", i)
 	}
-	if len(st.Servers) != 1 || !st.Servers[0].Reached || st.Playit.Linked {
+	// Only the Java server is reached: playit.gg's free plan can't carry
+	// NetherNet, which Bedrock players use.
+	if len(st.Servers) != 2 || st.Servers[0].Name != "Java World" || !st.Servers[0].Reached || st.Servers[1].Reached || !strings.Contains(st.Servers[1].Problem, "Java") || st.Playit.Linked {
 		t.Errorf("status: %+v", st)
 	}
 }
@@ -304,25 +318,19 @@ func TestPlayitInsteadOfTheRouter(t *testing.T) {
 func TestPlayitTunnelsPerServer(t *testing.T) {
 	for _, c := range []struct {
 		s    Server
-		only string
 		want string
 	}{
-		{Server{}, "", "udp:minecraft-bedrock"},
-		{Server{Java: true}, "", "tcp:minecraft-java"},
-		{Server{Java: true, JavaConsoles: true}, "", "tcp:minecraft-java udp:minecraft-bedrock"},
-		{Server{Java: true, JavaConsoles: true}, "tcp", "tcp:minecraft-java"},
-		{Server{Java: true, JavaConsoles: true}, "udp", "udp:minecraft-bedrock"},
-		// The choice only applies to a server with both.
-		{Server{Java: true}, "udp", "tcp:minecraft-java"},
-		{Server{}, "tcp", "udp:minecraft-bedrock"},
-		{Server{Hytale: true}, "", "udp:"},
+		{Server{Bedrock: true}, ""},
+		{Server{Java: true}, "tcp:minecraft-java"},
+		{Server{Java: true, JavaConsoles: true}, "tcp:minecraft-java"},
+		{Server{}, ""}, // Hytale
 	} {
 		var got []string
-		for _, w := range c.s.PlayitTunnels(true, c.only) {
+		for _, w := range c.s.PlayitTunnels(true) {
 			got = append(got, w.Proto+":"+w.Type)
 		}
 		if strings.Join(got, " ") != c.want {
-			t.Errorf("%+v only %q: %v, want %s", c.s, c.only, got, c.want)
+			t.Errorf("%+v: %v, want %s", c.s, got, c.want)
 		}
 	}
 }

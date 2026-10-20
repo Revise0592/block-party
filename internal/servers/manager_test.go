@@ -163,11 +163,24 @@ func TestServerLifecycle(t *testing.T) {
 		t.Errorf("version %q", st.Version)
 	}
 	props := readFile(t, filepath.Join(s.dir(), "server.properties"))
-	for _, want := range []string{"server-name=Test World", "server-port=19134", "server-portv6=19135", "enable-lan-visibility=false", "server-udp-ports=49152-49201", "# comment kept"} {
+	for _, want := range []string{"server-name=Test World", "server-port=19134", "server-portv6=19135", "enable-lan-visibility=false", "server-udp-ports=49152-49171", "# comment kept"} {
 		if !strings.Contains(props, want) {
 			t.Errorf("server.properties is missing %q:\n%s", want, props)
 		}
 	}
+	// While friends outside can join, consoles are also told the range at
+	// the home's internet address.
+	m.SetHostAddresses(func() HostAddresses { return HostAddresses{Home: "10.0.1.117", Internet: "203.0.113.7"} })
+	s.mu.Lock()
+	err = s.applyPanelProperties(false)
+	s.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if props := readFile(t, filepath.Join(s.dir(), "server.properties")); !strings.Contains(props, "\nserver-udp-ports=49152-49171,203.0.113.7:49152-49171:49152-49171\n") {
+		t.Errorf("internet ports:\n%s", props)
+	}
+	m.SetHostAddresses(nil)
 	if got := m.Joinable(); len(got) != 1 || got[0].Port != 19134 {
 		t.Errorf("joinable: %+v", got)
 	}
@@ -351,8 +364,11 @@ func TestIDsAndPorts(t *testing.T) {
 	if _, err := m.freePort(); err == nil {
 		t.Error("ports past 19199 must not be handed out")
 	}
-	if r := udpRange(19136); r != "49202-49251" {
-		t.Errorf("range %s", r)
+	if a, b := BedrockUDPPorts(19136); a != 49202 || b != 49221 {
+		t.Errorf("range %d-%d", a, b)
+	}
+	if a, _ := BedrockUDPPorts(19198); a+bedrockUDPPortCount-1 > 65535 || a < 49152 {
+		t.Errorf("last range starts at %d", a)
 	}
 }
 

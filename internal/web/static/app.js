@@ -2,7 +2,7 @@
 // The panel page ("Control Room" style). One page, with views chosen by the
 // address after # (see route): the servers dashboard, one server with its
 // Overview, Players, Settings, Backups and Console tabs, and the Backups,
-// Help, Import, Add server, Setup guide, People and Account pages.
+// Help, Settings, Import, Add server, Setup guide, People and Account pages.
 //
 // What shows depends on who's signed in: the owner sees everything; anyone
 // else sees only the servers the owner gave them, with the buttons their
@@ -403,8 +403,8 @@ function route() {
     notifyDirty = false;
   }
   if (next === "joining") next = "help";
-  if (!["servers", "backups", "help", "import", "add", "guide", "people", "outside", "upkeep", "notify", "account", "server"].includes(next)) next = "servers";
-  if ((["import", "guide", "people", "outside", "upkeep", "notify"].includes(next) && !me.owner) || (next === "add" && !me.canAdd)) {
+  if (!["servers", "backups", "help", "import", "add", "guide", "people", "outside", "upkeep", "notify", "account", "server", "settings"].includes(next)) next = "servers";
+  if ((["import", "guide", "people", "outside", "upkeep", "notify", "settings"].includes(next) && !me.owner) || (next === "add" && !me.canAdd)) {
     location.hash = "#/"; // not for this account
     return;
   }
@@ -475,7 +475,7 @@ function setView(v) {
   view = v;
   for (const sec of document.querySelectorAll(".view")) sec.hidden = sec.id !== "view-" + v;
   // Pages without their own menu entry light up the one they're reached from.
-  const navKey = { server: "servers", add: "servers", import: "servers", guide: "help", outside: "help", upkeep: "help", notify: "help", people: me.owner ? "people" : "account" }[v] || v;
+  const navKey = { server: "servers", add: "servers", import: "servers", guide: "help", outside: "settings", upkeep: "settings", notify: "settings", people: me.owner ? "people" : "account" }[v] || v;
   for (const a of document.querySelectorAll("[data-nav]")) {
     if (a.dataset.nav === navKey) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   }
@@ -879,7 +879,8 @@ function control(f) {
         onchange: (e) => setEdit(f, e.target.value) });
     default: {
       let shown = val || "(not set)";
-      if (f.key === "allow-list") shown = val === "true" ? "On" : "Off";
+      if (val === "true" || val === "false") shown = val === "true" ? "On" : "Off";
+      if (f.key === "transport") shown = { nethernet: "NetherNet", raknet: "RakNet" }[val] || shown;
       return el("span", { class: "ro" }, shown);
     }
   }
@@ -895,7 +896,7 @@ function renderSettings() {
   $("raw-help").textContent = hytale
     ? "Hytale's own settings file (JSON). Hytale writes it while it runs, so stop the server to change settings here or above."
     : "For settings that aren't above. The port and LAN settings are put back as the panel needs them. Changes apply after a restart.";
-  $("settings-groups").replaceChildren(...v.groups.map((g) => el("div", { class: "card" },
+  const cards = v.groups.map((g) => el("div", { class: "card" },
     el("h3", {}, g.title),
     ...g.fields.map((f) => {
       const dirty = f.key in edits;
@@ -906,7 +907,19 @@ function renderSettings() {
         f.link === "players" ? el("div", { class: "help" }, el("a", { href: serverHref(selected, "players") }, "Open the Players tab")) : null,
         dirty ? el("div", { class: "changed" }, `Changed from ${f.value || "(not set)"}`) : null,
         warn ? el("div", { class: "warn" }, "⚠ " + f.warning) : null);
-    }))));
+    })));
+  // Two columns on wide screens, both starting at the same top line: the
+  // first groups on the left and the rest on the right, split where the
+  // columns come out closest in length (so the order on a phone is the same).
+  const size = v.groups.map((g) => 2 + g.fields.length);
+  const total = size.reduce((a, b) => a + b, 0);
+  let split = cards.length, best = Infinity, run = 0;
+  for (let i = 0; i < cards.length; i++) {
+    run += size[i];
+    const diff = Math.abs(total - 2 * run);
+    if (i < cards.length - 1 && diff < best) { best = diff; split = i + 1; }
+  }
+  $("settings-groups").replaceChildren(el("div", { class: "col" }, ...cards.slice(0, split)), el("div", { class: "col" }, ...cards.slice(split)));
   updateSaveBar();
 }
 
@@ -2056,19 +2069,17 @@ function inviteText(v, name) {
   }
   const javaLines = ["Open Minecraft (Java Edition) on your PC or Mac, choose Multiplayer, then Add Server, and type",
     `  Server Address: ${v.address}:${v.port}`, ""];
-  if (v.java && !v.javaConsoles) {
+  // Through playit.gg only Java players can join (Bedrock and consoles need
+  // NetherNet, which playit.gg's free plan can't carry).
+  if (v.java && (!v.javaConsoles || v.playit)) {
     return [`Come play on "${name}" with me in Minecraft: Java Edition!`, "", ...javaLines,
       "Send me your Minecraft Java username first so I can put you on the allowlist."].join("\n");
   }
-  // Through playit.gg, console players on a Java server have their own
-  // address (Geyser's tunnel).
-  const bAddr = v.playit && v.java ? (v.consoleAddress || "(not ready yet)") : v.address;
-  const bPort = v.playit && v.java ? (v.consolePort || "") : v.port;
   const lines = [`Come play on "${name}" with me in Minecraft!`, ""];
   if (v.java) lines.push("On a PC or Mac with Minecraft: Java Edition:", ...javaLines.map((l) => l && "  " + l));
   lines.push(v.java ? "On a phone, tablet or Windows (Minecraft Bedrock): go to Play, then Servers, then Add Server, and type"
     : "On a PC, phone or tablet: open Minecraft, go to Play, then Servers, then Add Server, and type",
-    `  Server address: ${bAddr}`, `  Port: ${bPort}`, "");
+    `  Server address: ${v.address}`, `  Port: ${v.bedrockPort || v.port}`, "");
   lines.push("On an Xbox, PlayStation or Switch (they can't type an address):");
   if (v.consoles && v.consoleDNS) {
     lines.push(`  1. In the console's network settings, set the DNS by hand: primary ${v.consoleDNS}, secondary 1.1.1.1.`,
@@ -2080,7 +2091,7 @@ function inviteText(v, name) {
   lines.push("  1. Set the DNS by hand: primary 104.238.130.180 (PlayStation: 45.55.68.52), secondary 8.8.8.8.",
     "     (That's BedrockConnect, a free public server list.)",
     "  2. Restart the console, open Minecraft, go to Servers and join any featured server.",
-    `  3. Choose "Connect to a Server" and type ${bAddr} and port ${bPort}.`, "",
+    `  3. Choose "Connect to a Server" and type ${v.address} and port ${v.bedrockPort || v.port}.`, "",
     v.java ? "Send me your gamertag (or Java username) first so I can put you on the allowlist."
       : "Send me your gamertag first so I can put you on the allowlist.");
   return lines.join("\n");
@@ -2092,7 +2103,6 @@ function renderOverviewOutside(v, id) {
   const actions = [];
   $("ov-outside-problem").hidden = true;
   $("ov-invite-box").hidden = true;
-  $("ov-tunnels").hidden = true;
   if (!v) { $("ov-outside-text").textContent = "Couldn't load this."; $("ov-outside-actions").replaceChildren(); return; }
   if (!v.enabled) {
     $("ov-outside-text").replaceChildren(...(me.owner
@@ -2101,39 +2111,32 @@ function renderOverviewOutside(v, id) {
     $("ov-outside-actions").replaceChildren();
     return;
   }
-  if (v.open && v.playit && !v.address) {
+  if (v.open && v.playitCant) {
+    $("ov-outside-text").textContent = "Marked open, but friends outside can't join it through playit.gg.";
+  } else if (v.open && v.playit && !v.address) {
     $("ov-outside-text").textContent = v.reached ? "Open through playit.gg. Its address is on its way." : "Marked open, but friends can't join right now.";
   } else if (v.open) {
     $("ov-outside-text").replaceChildren(v.reached ? "Open: friends on the allowlist can join from anywhere at " : "Marked open, but friends can't join right now. Address: ",
-      el("b", { class: "mono" }, `${v.address}:${v.port}`),
-      ...(v.consoleAddress ? [" (consoles and Bedrock: ", el("b", { class: "mono" }, `${v.consoleAddress}:${v.consolePort}`), ")"] : []), ".");
+      el("b", { class: "mono" }, `${v.address}:${v.port}`), ...(v.playit && v.javaConsoles ? [" (Java players only)"] : []), ".");
   } else {
     $("ov-outside-text").textContent = "Closed: only people in the house can join.";
   }
   const notes = [];
   if (v.problem) notes.push(`It can't be reached while ${v.problem}. Turn it back on (Players or Settings tab).`);
   if (v.open && v.shared) notes.push("Your internet provider (or a second router) shares this home's address, so friends can't reach it. See Friends outside the house.");
-  if (v.open && v.playit && !v.problem && !v.opened) {
+  if (v.open && v.playitCant) {
+    notes.push("Through playit.gg friends outside can only join Java servers for now: Bedrock and console players join over NetherNet, which playit.gg's free plan can't carry. People in the house can still play.");
+  } else if (v.open && v.playit && !v.problem && !v.opened) {
     notes.push(v.portError ? `playit.gg: ${v.portError}` : "playit.gg is setting it up…");
   } else if (v.open && !v.problem && !v.opened && me.owner) {
-    const proto = v.java ? (v.javaConsoles ? "TCP and UDP" : "TCP") : "UDP";
+    const fw = (v.forwards || []).join(", ");
     notes.push(v.upnp && v.portError
-      ? `The router didn't open port ${v.port}: ${v.portError}. Forward ${proto} ${v.port} to this panel by hand.`
-      : (v.upnp ? "" : `Forward ${proto} port ${v.port} to this panel in your router (see Friends outside the house).`));
+      ? `The router didn't open port ${v.port}: ${v.portError}. Forward ${fw} to this panel by hand.`
+      : (v.upnp ? "" : `Forward ${fw} to this panel in your router (see Friends outside the house).`));
   }
   const note = notes.filter(Boolean).join(" ");
   $("ov-outside-problem").textContent = note;
   $("ov-outside-problem").hidden = !note;
-  // A Java server with console players can keep just one playit.gg tunnel.
-  if (v.playit && v.playitChoice && care) {
-    $("ov-tunnels").hidden = false;
-    if (document.activeElement !== $("ov-tunnels-select")) $("ov-tunnels-select").value = v.playitOnly || "";
-    $("ov-tunnels-help").textContent = {
-      "": "Java players use one address; Bedrock and console players (through Geyser) use the other. Uses one TCP and one UDP tunnel.",
-      tcp: "Only Java players outside the house can join. Console and Bedrock friends outside can't: they come in through the Bedrock tunnel. Geyser still works for consoles at home.",
-      udp: "Only Bedrock and console players outside the house can join, through Geyser. Java players outside can't.",
-    }[v.playitOnly || ""];
-  }
   if (care) {
     actions.push(btn(v.open ? "Close to friends outside" : "Open to friends outside", async (ev) => {
       const b = ev.currentTarget;
@@ -2164,17 +2167,6 @@ function renderOverviewOutside(v, id) {
   }
   $("ov-outside-actions").replaceChildren(...actions);
 }
-
-$("ov-tunnels-select").addEventListener("change", async (ev) => {
-  const sel = ev.currentTarget;
-  const id = selected;
-  sel.disabled = true;
-  try {
-    const nv = await post(`/api/servers/${encodeURIComponent(id)}/outside/tunnels`, { only: sel.value });
-    if (id === selected) renderOverviewOutside(nv, id);
-  } catch (err) { alert(err.message); }
-  sel.disabled = false;
-});
 
 let outsideDirty = false;
 
@@ -2232,11 +2224,21 @@ function renderOutside(st) {
   else if (st.router) { r.textContent = `Router: ${st.router}.`; r.className = "small ok"; }
   else { r.textContent = st.routerError || (set.enabled ? "Looking for the router…" : ""); r.className = "small warn"; }
 
-  const ports = st.ports || [];
+  // Runs of ports next to each other with the same type, use and state are
+  // one row ("49152-49171").
+  const ports = [];
+  for (const p of st.ports || []) {
+    const last = ports[ports.length - 1];
+    if (last && last.proto === p.proto && last.for === p.for && last.opened === p.opened && last.error === p.error && last.to + 1 === p.port) {
+      last.to = p.port;
+    } else {
+      ports.push({ ...p, to: p.port });
+    }
+  }
   $("outside-ports").replaceChildren(...(ports.length
     ? [el("tr", {}, el("th", {}, "Port"), el("th", {}, "Type"), el("th", {}, "Forward to"), el("th", {}, "For"), el("th", {}, "Router")),
       ...ports.map((p) => el("tr", {},
-        el("td", { class: "mono" }, String(p.port)), el("td", {}, p.proto), el("td", { class: "mono" }, st.localIP), el("td", {}, p.for),
+        el("td", { class: "mono", style: "white-space: nowrap" }, p.to > p.port ? `${p.port}-${p.to}` : String(p.port)), el("td", {}, p.proto), el("td", { class: "mono" }, st.localIP), el("td", {}, p.for),
         el("td", { class: p.opened ? "ok" : (p.error ? "warn" : "muted") }, p.opened ? "Opened" : (set.upnp ? (p.error || "…") : "Forward by hand"))))]
     : [el("tr", {}, el("td", { class: "muted" }, set.enabled ? "Nothing to forward yet: no server is open to friends outside." : "Nothing is forwarded while outside access is off."))]));
 
@@ -2272,7 +2274,7 @@ function renderPlayit(st) {
     if (p.agent === "running") facts.push(fact(true, "playit.gg's agent is running in the panel."));
     else if (open || p.agent !== "stopped") facts.push(fact(false, p.agentError || "Starting playit.gg's agent…"));
     else if (set.enabled && set.playit) facts.push(fact(true, "playit.gg's agent starts when a server is open to friends outside."));
-    if (p.tcp && p.tcp.allowed) facts.push(fact(true, `Tunnels in use on the account: ${p.tcp.used} of ${p.tcp.allowed} TCP, ${p.udp.used} of ${p.udp.allowed} UDP.`));
+    if (p.tcp && p.tcp.allowed) facts.push(fact(true, `TCP tunnels in use on the account: ${p.tcp.used} of ${p.tcp.allowed}.`));
   }
   if (p.linked && !set.playit) facts.push(fact(false, "Save with \"Through playit.gg\" chosen to use it."));
   $("playit-facts").replaceChildren(...facts);
@@ -2636,6 +2638,7 @@ function enterApp(st) {
     setInterval(() => { if (onServer("backups")) loadBackups(); }, 3000),
     setInterval(() => { if (onServer("overview")) loadOverview(); }, 10000),
     setInterval(checkUpdates, 10 * 60 * 1000),
+    setInterval(loadJoinInfo, 30 * 60 * 1000),
     setInterval(() => { if (signedIn && view === "outside" && !document.hidden) loadOutside(false); }, 10000),
   ];
   if (me.owner && !st.setupDone && !location.hash.startsWith("#/guide")) location.hash = "#/guide";
@@ -2663,7 +2666,32 @@ function fillJoinInfo() {
   const ip = joinInfo.hostIP || "the panel's IP";
   for (const id of ["side-list-name", "dash-list-name", "join-list-name"]) $(id).textContent = name;
   for (const id of ["side-list-ip", "dash-list-ip", "join-list-ip"]) $(id).textContent = ip;
+  fillPanelUpdate();
 }
+
+// ---- a newer Block Party ----
+
+// The owner hears about a newer release on the Servers page (until they
+// say "Not now" for that version) and on Settings.
+function fillPanelUpdate() {
+  const cur = joinInfo.version || "";
+  const next = me.owner ? joinInfo.panelUpdate || "" : "";
+  const notes = "https://github.com/ScottSchneck/block-party/blob/main/CHANGELOG.md";
+  let dismissed = "";
+  try { dismissed = localStorage.getItem("bp-update-dismissed") || ""; } catch (_) { /* private window */ }
+  $("panel-update-banner").hidden = !next || dismissed === next;
+  $("panel-update-text").textContent = `Block Party ${next} is out`;
+  $("panel-update-how").textContent = `(you have ${cur}). Update it from Unraid's Docker tab: Apply update.`;
+  $("panel-update-notes").href = notes;
+  $("settings-version").replaceChildren(...(next
+    ? [el("b", {}, `Block Party ${next} is out.`), ` This panel is ${cur}. `, el("a", { href: notes, target: "_blank", rel: "noopener noreferrer" }, "What's new")]
+    : [cur ? `This panel is Block Party ${cur}` + (joinInfo.panelLatest ? ", the newest version." : ".") : ""]));
+}
+
+$("panel-update-dismiss").addEventListener("click", () => {
+  try { localStorage.setItem("bp-update-dismissed", joinInfo.panelUpdate || ""); } catch (_) { /* private window */ }
+  $("panel-update-banner").hidden = true;
+});
 
 // ---- appearance ----
 

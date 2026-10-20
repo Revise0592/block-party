@@ -89,6 +89,7 @@
     <a class="nav" href="#/" data-nav="servers"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"></rect><rect x="3" y="14" width="18" height="6" rx="1.5"></rect><path d="M7 7h.01M7 17h.01"></path></svg>Servers</a>
     <a class="nav" href="#/backups" data-nav="backups"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="5" rx="1"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"></path></svg>Backups</a>
     <a class="nav" href="#/people" data-nav="people" data-owner-only><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.3-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><circle cx="17" cy="9" r="2.5"></circle><path d="M16.5 14.5c2.6.2 4.4 2 5 5"></path></svg>People</a>
+    <a class="nav" href="#/settings" data-nav="settings" data-owner-only><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>Settings</a>
     <div class="sidebar-foot">
       <a class="nav" href="#/help" data-nav="help"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14"></path><path d="M12 17.5h.01"></path></svg>Help</a>
       <a class="list-card" href="#/help">
@@ -116,6 +117,12 @@
         <p id="update-banner-text" class="grow"></p>
         <a class="button" href="#/upkeep" id="update-auto-link" data-owner-only>Do it overnight</a>
         <button type="button" id="update-all">Update all</button>
+      </div>
+      <div id="panel-update-banner" class="banner info" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.5 5 5.5.8-4 3.9.9 5.5-4.9-2.6-4.9 2.6.9-5.5-4-3.9 5.5-.8z"></path></svg>
+        <p class="grow"><b id="panel-update-text"></b> <span id="panel-update-how"></span></p>
+        <a class="button" id="panel-update-notes" target="_blank" rel="noopener noreferrer">What's new</a>
+        <button type="button" id="panel-update-dismiss">Not now</button>
       </div>
       <p id="empty" class="card muted" hidden></p>
       <div id="servers" class="server-table"></div>
@@ -270,12 +277,8 @@
       <div class="col">
       <div class="card help-links">
         <a href="#/guide" data-owner-only><b>Setup guide</b><span class="muted">Your gamertag, how consoles join, your servers, and a checklist of what's left.</span></a>
-        <a href="#/import" data-owner-only><b>Import servers</b><span class="muted">Copy servers in from Crafty Controller or another folder.</span></a>
-        <a href="#/outside" data-owner-only><b>Friends outside the house</b><span class="muted">Let friends who don't live here join the servers you choose.</span></a>
-        <a href="#/notify" data-owner-only><b>Notifications</b><span class="muted">Phone, Discord, email or text messages when someone wants in, a server crashes, or a backup fails.</span></a>
-        <a href="#/upkeep" data-owner-only><b>Overnight updates and restarts</b><span class="muted">Keep servers on the newest Bedrock without anyone pressing Update.</span></a>
-        <a href="#/people" data-owner-only><b>People</b><span class="muted">Accounts for your kids, and which servers each one can use.</span></a>
-        <a href="#/account"><b>Appearance and password</b><span class="muted">Light or dark, change your password, sign out.</span></a>
+        <a href="#/settings" data-owner-only><b>Settings</b><span class="muted">Friends outside the house, notifications, overnight updates, importing servers and accounts.</span></a>
+        <a href="#/account"><b>Your account</b><span class="muted">Light or dark, your password and two-factor sign-in, sign out.</span></a>
       </div>
       </div>
       <div class="col">
@@ -291,6 +294,43 @@
       </div>
       </div>
       <p class="muted small" id="version-3"></p>
+    </section>
+
+    <!-- Settings (owner only) -->
+    <section id="view-settings" class="view" hidden>
+      <h1>Settings</h1>
+      <p class="muted">How the panel looks after your servers and your family. Each server's own settings are on its Settings tab.</p>
+      <div class="cols">
+      <div class="col">
+      <h2 class="section-title">Players</h2>
+      <div class="card help-links">
+        <a href="#/outside"><b>Friends outside the house</b><span class="muted">Let friends who don't live here join the servers you choose.</span></a>
+        <a href="#/people"><b>People</b><span class="muted">Accounts for your kids, and which servers each one can use.</span></a>
+      </div>
+      <h2 class="section-title">Keeping things running</h2>
+      <div class="card help-links">
+        <a href="#/upkeep"><b>Overnight updates and restarts</b><span class="muted">Keep servers on the newest version without anyone pressing Update.</span></a>
+        <a href="#/notify"><b>Notifications</b><span class="muted">Phone, Discord, email or text messages when someone wants in, a server crashes, or a backup fails.</span></a>
+      </div>
+      </div>
+      <div class="col">
+      <h2 class="section-title">Servers</h2>
+      <div class="card help-links">
+        <a href="#/import"><b>Import servers</b><span class="muted">Copy servers in from Crafty Controller or another folder.</span></a>
+        <a href="#/guide"><b>Setup guide</b><span class="muted">Go through setting up again: your gamertag, consoles, servers, and what's left.</span></a>
+      </div>
+      <h2 class="section-title">You</h2>
+      <div class="card help-links">
+        <a href="#/account"><b>Your account</b><span class="muted">Light or dark, your password and two-factor sign-in, sign out.</span></a>
+      </div>
+      <h2 class="section-title">Block Party</h2>
+      <div class="card">
+        <p id="settings-version"></p>
+        <p class="muted small" id="settings-version-how">The panel looks for a new version twice a day. To update, open Unraid's <b>Docker</b> tab and choose <b>Apply update</b> for Block Party (press <b>Check for updates</b> first if it isn't offered). Your servers and worlds are kept.</p>
+        <p class="small"><a href="https://github.com/ScottSchneck/block-party/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">What's changed in each version</a></p>
+      </div>
+      </div>
+      </div>
     </section>
 
     <!-- Setup guide -->
@@ -387,7 +427,7 @@
 
     <!-- Friends outside the house (owner only) -->
     <section id="view-outside" class="view narrow" hidden>
-      <div class="crumbs"><a href="#/help">Help</a> /</div>
+      <div class="crumbs"><a href="#/settings">Settings</a> /</div>
       <h1>Friends outside the house</h1>
       <p class="muted">Let friends who don't live here join the servers you choose. Only players on a server's allowlist can get in, and their Xbox sign-in is always checked. Everything else stays private.</p>
       <p id="outside-error" class="error" hidden></p>
@@ -407,7 +447,7 @@
             </label>
             <label class="check">
               <input type="radio" name="outside-via" id="outside-via-playit" value="playit">
-              <span>Through playit.gg (no port forwarding, works behind any router)</span>
+              <span>Through playit.gg (Java servers only for now; no port forwarding, works behind any router)</span>
             </label>
           </fieldset>
           <div id="outside-router-only">
@@ -421,7 +461,7 @@
 
         <section class="card" id="outside-playit-card" hidden>
           <h2>playit.gg</h2>
-          <p class="muted small">playit.gg is a free service that gives each open server an address on the internet and passes its players through to this panel, so nothing changes on the router. Its free plan has room for 4 TCP and 4 UDP tunnels: a Java server uses one TCP, and one UDP too with console players; a Bedrock or Hytale server uses one UDP.</p>
+          <p class="muted small">playit.gg is a free service that gives each open server an address on the internet and passes its players through to this panel, so nothing changes on the router. Its free plan has room for 4 TCP tunnels, and a Java server uses one. For now it carries Java servers only: from Minecraft 26.60 Bedrock and console players join over NetherNet, which playit.gg's free plan can't carry, so Bedrock and Hytale servers (and console players on Java servers) can't be reached through it. They still work for everyone at home.</p>
           <ul id="playit-facts" class="checklist"></ul>
           <div class="row" id="playit-actions"></div>
           <p id="playit-claim" class="small" hidden></p>
@@ -449,7 +489,7 @@
             <input id="outside-consoles" type="checkbox">
             <span>Let friends' consoles use this home's server list</span>
           </label>
-          <p class="muted small">Consoles can't type a server address, so a friend changes their console's DNS to this home's address, joins a featured server such as The Hive, and lands in the list of servers open to them. This forwards ports 19132 and 53 as well. The panel only answers the featured-server names for them; their console gets everything else from its second DNS. It works on most consoles; if one can't get online that way, the invite also explains a public alternative.</p>
+          <p class="muted small">Consoles can't type a server address, so a friend changes their console's DNS to this home's address, joins a featured server such as The Hive, and lands in the list of servers open to them. This forwards the server list (19132, and 19300-19319 for newer Minecraft) and DNS (53) as well. The panel only answers the featured-server names for them; their console gets everything else from its second DNS. It works on most consoles; if one can't get online that way, the invite also explains a public alternative.</p>
         </section>
 
         <div class="row">
@@ -468,7 +508,7 @@
 
     <!-- Overnight upkeep (owner only) -->
     <section id="view-upkeep" class="view narrow" hidden>
-      <div class="crumbs"><a href="#/help">Help</a> /</div>
+      <div class="crumbs"><a href="#/settings">Settings</a> /</div>
       <h1>Overnight updates and restarts</h1>
       <p class="muted">Each night, starting at the time below, the panel looks after the servers for three hours. It only touches a server nobody is playing on; one with players is tried again every minute until the three hours are up, then the next night.</p>
       <form id="upkeep-form" class="card">
@@ -494,7 +534,7 @@
 
     <!-- Notifications (owner only) -->
     <section id="view-notify" class="view narrow" hidden>
-      <div class="crumbs"><a href="#/help">Help</a> /</div>
+      <div class="crumbs"><a href="#/settings">Settings</a> /</div>
       <h1>Notifications</h1>
       <p class="muted">Hear about what needs you without opening the panel. Turn on any of these, and choose for each what it tells you about. The same thing isn't repeated within half an hour.</p>
       <p id="notify-error" class="error" hidden></p>
@@ -662,16 +702,6 @@
               <h2>Friends outside the house</h2>
               <p id="ov-outside-text" class="muted"></p>
               <p id="ov-outside-problem" class="small warn" hidden></p>
-              <div id="ov-tunnels" hidden>
-                <label>playit.gg tunnels
-                  <select id="ov-tunnels-select">
-                    <option value="">Java and Bedrock (consoles, phones, Windows)</option>
-                    <option value="tcp">Java only</option>
-                    <option value="udp">Bedrock only (consoles, phones, Windows)</option>
-                  </select>
-                </label>
-                <p id="ov-tunnels-help" class="muted small"></p>
-              </div>
               <div class="row" id="ov-outside-actions"></div>
               <details id="ov-invite-box" hidden>
                 <summary>Invite for a friend</summary>
@@ -737,7 +767,7 @@
         </section>
 
         <form id="settings-form">
-          <div id="settings-groups"></div>
+          <div id="settings-groups" class="cols"></div>
           <div id="settings-bar" class="savebar" hidden>
             <span id="settings-dirty"></span>
             <button type="button" id="settings-discard">Discard</button>
@@ -923,6 +953,7 @@
   <nav class="tabbar" aria-label="Main">
     <a href="#/" data-nav="servers"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"></rect><rect x="3" y="14" width="18" height="6" rx="1.5"></rect></svg>Servers</a>
     <a href="#/backups" data-nav="backups"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="5" rx="1"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"></path></svg>Backups</a>
+    <a href="#/settings" data-nav="settings" data-owner-only><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>Settings</a>
     <a href="#/help" data-nav="help"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14"></path><path d="M12 17.5h.01"></path></svg>Help</a>
     <a href="#/account" data-nav="account"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c1-4 4-6 8-6s7 2 8 6"></path></svg><span id="tab-user">Account</span></a>
   </nav>

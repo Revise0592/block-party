@@ -66,6 +66,7 @@ type Server struct {
 	out      *outside.Manager
 	notifier *notify.Notifier
 	log      *slog.Logger
+	update   panelUpdate // the newest Block Party release seen
 }
 
 // New prepares the web server and the owner account store.
@@ -140,6 +141,7 @@ func (s *Server) Run(ctx context.Context) error {
 		ReadHeaderTimeout: 10 * time.Second,
 		ErrorLog:          log.New(serverLog{s.log}, "", 0),
 	}
+	go s.checkPanelUpdates(ctx)
 	go func() {
 		<-ctx.Done()
 		shut, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -323,7 +325,8 @@ func writeError(w http.ResponseWriter, code int, err error) {
 }
 
 func (s *Server) info(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"version": s.opts.Version, "hostIP": s.opts.HostIP, "listName": s.opts.ListName, "owner": s.auth.Username()})
+	writeJSON(w, http.StatusOK, map[string]string{"version": s.opts.Version, "hostIP": s.opts.HostIP, "listName": s.opts.ListName, "owner": s.auth.Username(),
+		"panelUpdate": s.newerPanel(), "panelLatest": s.update.get()})
 }
 
 // listedServer is a server as the list shows it: its status and what the

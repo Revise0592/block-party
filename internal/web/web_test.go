@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/ScottSchneck/block-party/internal/auth"
+	"github.com/ScottSchneck/block-party/internal/outside"
 	"github.com/ScottSchneck/block-party/internal/servers"
 )
 
@@ -417,5 +418,37 @@ func TestServerLogQuietsHandshakes(t *testing.T) {
 	l.Write([]byte("http: panic serving 1.2.3.4: boom\n"))
 	if !strings.Contains(buf.String(), "level=WARN") || !strings.Contains(buf.String(), "panic serving") {
 		t.Errorf("other messages lost: %q", buf.String())
+	}
+}
+
+func TestForwardsText(t *testing.T) {
+	ports := outside.Server{Name: "B", Port: 19136, Bedrock: true, UDPPorts: [2]int{49202, 49221}}.Forwards()
+	got := strings.Join(forwardsText(ports), ", ")
+	if got != "UDP 19136, TCP 19136, UDP 49202-49221" {
+		t.Errorf("bedrock: %q", got)
+	}
+	ports = outsideServer(servers.Status{Type: servers.TypeJava, Port: 19138, Consoles: true}).Forwards()
+	if got := strings.Join(forwardsText(ports), ", "); got != "TCP 19138, UDP 19138, TCP 19139, UDP 19139" {
+		t.Errorf("java: %q", got)
+	}
+}
+
+func TestPanelUpdate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"name":"v1.2.0-rc1"},{"name":"v1.10.0"},{"name":"v1.9.3"},{"name":"edge"}]`))
+	}))
+	defer srv.Close()
+	latest, err := fetchLatestRelease(context.Background(), srv.URL)
+	if err != nil || latest != "v1.10.0" {
+		t.Fatalf("latest %q %v", latest, err)
+	}
+	for _, c := range []struct{ running, want string }{
+		{"v1.9.3", "v1.10.0"}, {"v1.10.0", ""}, {"v1.11.0", ""}, {"dev", ""}, {"main-abc1234", ""},
+	} {
+		s := &Server{opts: Options{Version: c.running}}
+		s.update.latest = latest
+		if got := s.newerPanel(); got != c.want {
+			t.Errorf("running %s: %q, want %q", c.running, got, c.want)
+		}
 	}
 }
