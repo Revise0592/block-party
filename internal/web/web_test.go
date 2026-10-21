@@ -3,6 +3,8 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"image"
+	"image/png"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -450,5 +452,43 @@ func TestPanelUpdate(t *testing.T) {
 		if got := s.newerPanel(); got != c.want {
 			t.Errorf("running %s: %q, want %q", c.running, got, c.want)
 		}
+	}
+}
+
+func TestIconRoutes(t *testing.T) {
+	s, dir := newTestServer(t)
+	sdir := filepath.Join(dir, "servers", "empty")
+	os.MkdirAll(sdir, 0o755)
+	os.WriteFile(filepath.Join(sdir, ".blockheads.json"), []byte(`{"id":"empty","name":"Empty","type":"java","port":25565}`), 0o644)
+	if err := s.mgr.Load(); err != nil {
+		t.Fatal(err)
+	}
+	do := func(method, path, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		signIn(r, s)
+		r.Header.Set("X-Block-Party", "1")
+		w := httptest.NewRecorder()
+		s.routes().ServeHTTP(w, r)
+		return w
+	}
+	if w := do("GET", "/api/servers/empty/icon", ""); w.Code != 404 {
+		t.Errorf("no picture yet: %d", w.Code)
+	}
+	if w := do("PUT", "/api/servers/empty/icon", "hello"); w.Code != 400 {
+		t.Errorf("not a picture: %d %s", w.Code, w.Body)
+	}
+	var pic strings.Builder
+	png.Encode(&pic, image.NewGray(image.Rect(0, 0, 100, 100)))
+	if w := do("PUT", "/api/servers/empty/icon", pic.String()); w.Code != 200 || !strings.Contains(w.Body.String(), `"icon":`) {
+		t.Errorf("upload: %d %s", w.Code, w.Body)
+	}
+	if _, err := os.Stat(filepath.Join(sdir, "server-icon.png")); err != nil {
+		t.Errorf("Java's server-icon.png wasn't written: %v", err)
+	}
+	if w := do("GET", "/api/servers/empty/icon", ""); w.Code != 200 || w.Header().Get("Content-Type") != "image/png" {
+		t.Errorf("get: %d %s", w.Code, w.Header().Get("Content-Type"))
+	}
+	if w := do("DELETE", "/api/servers/empty/icon", ""); w.Code != 200 || strings.Contains(w.Body.String(), `"icon":`) {
+		t.Errorf("delete: %d %s", w.Code, w.Body)
 	}
 }

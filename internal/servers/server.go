@@ -77,6 +77,8 @@ type Status struct {
 	// ConsolesWaiting is the server's Minecraft version when Geyser doesn't
 	// support it yet, so consoles can't join until a newer Geyser is out.
 	ConsolesWaiting string `json:"consolesWaiting,omitempty"`
+	// Icon is when the server's picture last changed (0: it has none).
+	Icon int64 `json:"icon,omitempty"`
 }
 
 const (
@@ -190,13 +192,14 @@ func (s *Server) isBusy() bool {
 
 // Status returns a snapshot.
 func (s *Server) Status() Status {
+	icon := s.iconStamp() // before mu: it reads the disk
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	st := Status{
 		ID: s.meta.ID, Name: s.meta.Name, Type: s.meta.Type, Version: s.meta.Version,
 		Port: s.meta.Port, State: s.state, Message: s.message, AutoStart: s.meta.AutoStart,
 		Players: []Player{}, Preview: s.meta.Preview, Waiting: len(s.attempts),
-		Outside: s.meta.Outside, HoldVersion: s.meta.HoldVersion,
+		Outside: s.meta.Outside, HoldVersion: s.meta.HoldVersion, Icon: icon,
 	}
 	if s.isJava() {
 		st.Build, st.MemoryMB = s.meta.Build, s.meta.MemoryMB

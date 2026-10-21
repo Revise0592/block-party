@@ -646,6 +646,7 @@
     <section id="view-server" class="view" hidden>
       <div class="crumbs"><a href="#/">Servers</a> /</div>
       <div class="server-head">
+        <img id="detail-icon" class="server-icon big" alt="" hidden>
         <div class="grow">
           <h1 id="detail-name"></h1>
           <p id="detail-facts" class="facts"></p>
@@ -733,6 +734,17 @@
             <button type="submit">Rename</button>
           </div>
         </form>
+
+        <section class="card" id="icon-card">
+          <h3>Server picture</h3>
+          <div class="row">
+            <img id="icon-preview" class="server-icon big" alt="This server's picture" hidden>
+            <span id="icon-none" class="server-icon big none" aria-hidden="true"></span>
+            <label class="button"><span id="icon-choose-text">Choose a picture</span><input type="file" id="icon-file" accept="image/*" hidden></label>
+            <button id="icon-remove" type="button" hidden>Remove</button>
+          </div>
+          <p id="icon-help" class="muted small"></p>
+        </section>
 
         <section class="card" id="memory-card" data-care hidden>
           <h3>Memory</h3>

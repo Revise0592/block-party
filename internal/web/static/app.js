@@ -138,6 +138,8 @@ function playingText(s) {
 }
 
 const serverHref = (id, tab) => `#/server/${encodeURIComponent(id)}/${tab || "overview"}`;
+// The server's picture; the time it changed makes a new one show at once.
+const iconURL = (s) => `/api/servers/${encodeURIComponent(s.id)}/icon?v=${s.icon}`;
 
 function startStopButton(s) {
   const busy = busyStates.includes(s.state);
@@ -156,11 +158,14 @@ function renderServerRow(s) {
   if (upd && access(s) >= CARE) extra.push("update ready");
   const open = access(s) >= RUN;
   return el("div", { class: "srow", style: bandStyle(s.id) },
-    el("div", {},
-      open ? el("a", { class: "name", href: serverHref(s.id) }, s.name) : el("span", { class: "name" }, s.name),
-      s.outside ? el("span", { class: "badge outside", title: "Friends outside the house can join" }, "Friends outside") : null,
-      el("div", { class: "sub" }, `port ${s.port}`),
-      s.message ? el("div", { class: "note warn" }, s.message) : null),
+    el("div", { class: "srow-first" },
+      s.icon ? el("img", { class: "server-icon", src: iconURL(s), alt: "" })
+      : serverList.some((x) => x.icon) ? el("span", { class: "server-icon" }) : null,
+      el("div", {},
+        open ? el("a", { class: "name", href: serverHref(s.id) }, s.name) : el("span", { class: "name" }, s.name),
+        s.outside ? el("span", { class: "badge outside", title: "Friends outside the house can join" }, "Friends outside") : null,
+        el("div", { class: "sub" }, `port ${s.port}`),
+        s.message ? el("div", { class: "note warn" }, s.message) : null)),
     el("div", {}, stateEl(s)),
     el("div", { class: "cell-muted" }, playingText(s), s.waiting ? el("div", { class: "note warn" }, `${s.waiting} waiting to be let in`) : null),
     el("div", {},
@@ -298,10 +303,12 @@ let ovPlayersKey = ""; // what the Overview player list last showed
 let dashKey = "";      // what the dashboard last showed
 
 function renderDetailHead(s) {
-  const key = JSON.stringify([s.id, s.name, s.state, s.version, s.build, s.updateTo, s.consoles, s.consolesUpdate, s.consolesLive, s.consolesWaiting, s.port, s.message, latestVersion, s.players.length, prefs.style, s.access]);
+  const key = JSON.stringify([s.id, s.name, s.icon, s.state, s.version, s.build, s.updateTo, s.consoles, s.consolesUpdate, s.consolesLive, s.consolesWaiting, s.port, s.message, latestVersion, s.players.length, prefs.style, s.access]);
   if (key === detailKey) return; // unchanged: keep keyboard focus where it is
   detailKey = key;
   $("detail-name").textContent = s.name;
+  $("detail-icon").hidden = !s.icon;
+  if (s.icon) $("detail-icon").src = iconURL(s);
   const upd = needsUpdate(s);
   $("detail-facts").replaceChildren(stateEl(s),
     s.type === "hytale" ? el("span", {}, "Hytale ", el("span", { class: "mono" }, s.version || "…"))
@@ -350,7 +357,7 @@ async function refresh() {
         location.hash = "#/"; // the owner changed what this account may do
       } else if (s) {
         renderDetailHead(s);
-        if (tab === "settings") { renderHold(); renderMemory(); renderConsoles(); }
+        if (tab === "settings") { renderIcon(); renderHold(); renderMemory(); renderConsoles(); }
         if (tab === "overview") renderOverviewStatus(s);
       } else {
         resetSettings(); // it's gone (a failed import, say): nothing to save
@@ -823,6 +830,7 @@ function showSettingsError(err) {
 async function loadSettings() {
   if (!selected) return;
   const id = selected;
+  renderIcon();
   try {
     const v = await api(sid() + "/settings");
     if (id !== selected) return; // switched servers while loading
@@ -966,6 +974,66 @@ $("rename-form").addEventListener("submit", async (ev) => {
     showSettingsError(null);
     refresh();
   } catch (err) { showSettingsError(err); }
+});
+
+// ---- server picture ----
+
+const iconHelp = {
+  java: "Shows next to the server in Minecraft's multiplayer list. Any picture works: the panel crops it to a square and shrinks it to 64 by 64 pixels. A new picture shows after the server restarts.",
+  bedrock: "Shows here in the panel. Bedrock servers can't show a picture in the game's own server list.",
+  hytale: "Shows here in the panel. Hytale servers don't show a picture in the game yet.",
+};
+
+function renderIcon() {
+  const srv = serverList.find((x) => x.id === selected);
+  if (!srv) return;
+  $("icon-preview").hidden = !srv.icon;
+  if (srv.icon) $("icon-preview").src = iconURL(srv);
+  $("icon-none").hidden = !!srv.icon;
+  $("icon-remove").hidden = !srv.icon;
+  $("icon-choose-text").textContent = srv.icon ? "Change picture" : "Choose a picture";
+  $("icon-help").textContent = iconHelp[srv.type || "bedrock"] || iconHelp.bedrock;
+}
+
+// smallIcon crops a big picture to a square and shrinks it in the browser,
+// so a phone photo uploads quickly and the right way up. The panel makes the
+// final 64 by 64 picture; anything the browser can't open is sent as it is.
+async function smallIcon(file) {
+  try {
+    const bmp = await createImageBitmap(file);
+    const side = Math.min(bmp.width, bmp.height);
+    if (side <= 256) return file;
+    const c = document.createElement("canvas");
+    c.width = c.height = 256;
+    const g = c.getContext("2d");
+    g.imageSmoothingQuality = "high";
+    g.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, 256, 256);
+    return await new Promise((resolve) => c.toBlob((b) => resolve(b || file), "image/png"));
+  } catch (_) { return file; }
+}
+
+async function iconChange(fn) {
+  const id = selected;
+  try {
+    const st = await fn();
+    const i = serverList.findIndex((x) => x.id === st.id);
+    if (i >= 0) serverList[i] = { ...serverList[i], icon: st.icon };
+    if (id === selected) { showSettingsError(null); renderIcon(); }
+  } catch (err) { if (id === selected) showSettingsError(err); }
+  refresh();
+}
+
+$("icon-file").addEventListener("change", async () => {
+  const file = $("icon-file").files[0];
+  $("icon-file").value = "";
+  if (!file) return;
+  const url = sid() + "/icon";
+  const body = await smallIcon(file);
+  iconChange(() => api(url, { method: "PUT", body, headers: { "Content-Type": "application/octet-stream" } }));
+});
+$("icon-remove").addEventListener("click", () => {
+  if (!confirm("Remove this server's picture?")) return;
+  iconChange(() => del(sid() + "/icon"));
 });
 
 async function loadRaw() {

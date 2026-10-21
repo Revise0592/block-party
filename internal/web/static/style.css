@@ -208,6 +208,10 @@ fieldset > :nth-last-child(1 of :not([hidden])) { margin-bottom: 0; }
 .srow .acts button, .srow .acts a.button { min-height: 36px; padding: 0 12px; font-size: 13px; }
 .srow .note { font-size: 12px; margin-top: 2px; }
 .srow .mobile-extra { display: none; }
+.srow-first { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.server-icon { width: 32px; height: 32px; flex: none; border-radius: 6px; }
+.server-icon.big { width: 64px; height: 64px; border-radius: 8px; image-rendering: pixelated; }
+.server-icon.none { display: inline-block; border: 2px dashed var(--line); box-sizing: border-box; }
 .state { display: inline-flex; align-items: center; gap: 8px; }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--idle-dot); flex: none; }
 .state.running { color: var(--ok); } .state.running .dot { background: var(--ok-dot); }
@@ -496,6 +500,7 @@ html[data-style="treehouse"] #servers .srow {
   background: linear-gradient(var(--band) 0 14px, var(--band2) 14px 20px, var(--panel) 20px);
 }
 html[data-style="treehouse"] #servers .srow > :nth-child(1) { grid-area: name; display: block; }
+html[data-style="treehouse"] #servers .srow > .srow-first { display: flex; }
 html[data-style="treehouse"] #servers .srow > :nth-child(2) { grid-area: state; display: block; }
 html[data-style="treehouse"] #servers .srow > :nth-child(3) { grid-area: playing; display: block; min-height: 22px; font-size: 15px; }
 html[data-style="treehouse"] #servers .srow > :nth-child(4) { grid-area: version; display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
