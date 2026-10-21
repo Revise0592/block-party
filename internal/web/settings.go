@@ -1,7 +1,10 @@
 package web
 
 import (
+	"errors"
+	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -14,6 +17,9 @@ func (s *Server) settingsRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/servers/{id}/properties", s.withServer(levelRun, s.getProperties))
 	mux.HandleFunc("PUT /api/servers/{id}/properties", s.withServer(levelRun, s.putProperties))
 	mux.HandleFunc("POST /api/servers/{id}/rename", s.withServer(levelRun, s.renameServer))
+	mux.HandleFunc("GET /api/servers/{id}/icon", s.withServer(levelSee, s.getIcon))
+	mux.HandleFunc("PUT /api/servers/{id}/icon", s.withServer(levelRun, s.putIcon))
+	mux.HandleFunc("DELETE /api/servers/{id}/icon", s.withServer(levelRun, s.deleteIcon))
 }
 
 func (s *Server) getServerSettings(w http.ResponseWriter, r *http.Request, srv *servers.Server) {
@@ -89,6 +95,43 @@ func (s *Server) renameServer(w http.ResponseWriter, r *http.Request, srv *serve
 	old := srv.Status().Name
 	if err := s.did(r, srv, srv.Rename(req.Name), "renamed the server from "+strconv.Quote(old)); err != nil {
 		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, srv.Status())
+}
+
+func (s *Server) getIcon(w http.ResponseWriter, r *http.Request, srv *servers.Server) {
+	b, err := srv.Icon()
+	if errors.Is(err, os.ErrNotExist) {
+		writeError(w, http.StatusNotFound, errors.New("this server has no picture"))
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	// The page asks for it with the time it changed, so a copy can be kept.
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	_, _ = w.Write(b)
+}
+
+func (s *Server) putIcon(w http.ResponseWriter, r *http.Request, srv *servers.Server) {
+	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, servers.MaxIconUpload))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, errors.New("that picture is bigger than 15 MB; try a smaller one"))
+		return
+	}
+	if err := s.did(r, srv, srv.SetIcon(b), "changed the server picture"); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, srv.Status())
+}
+
+func (s *Server) deleteIcon(w http.ResponseWriter, r *http.Request, srv *servers.Server) {
+	if err := s.did(r, srv, srv.RemoveIcon(), "removed the server picture"); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, srv.Status())

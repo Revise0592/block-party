@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **A picture for each server**, under its Settings tab. Choose any picture
+  (a phone photo works); the panel crops it to a square and makes it the
+  64 by 64 `server-icon.png` Java servers show in Minecraft's multiplayer
+  list after a restart. Every server's picture also shows in the panel's
+  server list and at the top of its page. Bedrock and Hytale servers can't
+  show one in the game, so for them it's only in the panel.
+
 ## 1.2.1
 
 From [Revise0592's fork](https://github.com/Revise0592/block-party):
