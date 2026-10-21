@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+From [Revise0592's fork](https://github.com/Revise0592/block-party):
+
+- **Friends outside can join Java servers through playit.gg** instead of the
+  router, for homes that can't forward ports. Choose **Through playit.gg** on
+  the Friends outside the house page and link a (free) playit.gg account; the
+  panel downloads playit's agent (pinned and checked against its hash) and
+  runs it while a server is open. Java servers only, for Java players: from
+  Minecraft 26.60 Bedrock players and consoles join over NetherNet, which
+  playit.gg's free plan can't carry, so Bedrock and Hytale servers aren't
+  offered through it and say so. Players at home join as before.
 - **A picture for each server**, under its Settings tab. Choose any picture
   (a phone photo works); the panel crops it to a square and makes it the
   64 by 64 `server-icon.png` Java servers show in Minecraft's multiplayer

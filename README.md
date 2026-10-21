@@ -41,6 +41,7 @@ PS5, and the panel runs a family's servers day to day. See the
   labelled controls with a line of explanation each. Only the lines you change
   are rewritten, and the panel offers to restart the server to apply them.
   An advanced editor opens the whole `server.properties` for everything else.
+  A **Server picture** can be chosen there too: see [Server pictures](#server-pictures).
 - **Backups** on a schedule for each server (every hour up to once a day,
   keeping the number you choose), plus **Back up now**, **Download** and
   one-click **Restore**. Running servers are backed up without stopping them,
@@ -314,8 +315,7 @@ installing on Unraid.
   use.
 - Closing a server turns its tunnel off but keeps it, so its address stays
   the same when it's opened again. Deleting the server deletes its tunnel,
-  and **Unlink playit.gg** deletes all of the panel's tunnels. Tunnels an
-  earlier version made for Bedrock and consoles are deleted on their own.
+  and **Unlink playit.gg** deletes all of the panel's tunnels.
 - The agent's latest log lines are under **Agent log**, if something isn't
   working.
 
@@ -473,6 +473,21 @@ Preview servers are never updated this way, and a server can be kept on its
 version with **Keep this server on its Bedrock version** on its Settings tab
 (anyone who takes care of it can change that).
 
+### Server pictures
+
+Each server's **Settings** tab has a **Server picture** card. Choose any PNG,
+JPG or GIF (a photo from a phone works; big ones are shrunk before they're
+sent). The panel crops it to a square from the middle and saves it as a 64 by
+64 `server-icon.png` in the server's folder.
+
+- **Java servers** show it next to the server in Minecraft's multiplayer list
+  after a restart.
+- **Bedrock and Hytale servers** can't show a picture in the game, so for them
+  it's only in the panel.
+- Every server's picture shows in the panel's server list and at the top of
+  its page. **Remove** takes it away again. Anyone who **Runs it** can
+  change it.
+
 ### Deleting a server
 
 Only the owner can delete a server: **Delete server** at the bottom of its
@@ -607,6 +622,7 @@ apply without a restart.
 | `PUBLIC_IP_LOOKUP` | ipify, icanhazip, ifconfig.me | Where the panel asks for this home's internet address (comma-separated URLs), or `off` |
 | `UPNP_GATEWAY` | empty | The router's UPnP description URL, if searching the network doesn't find it |
 | `PLAYIT_AGENT` | empty | Run this playit.gg agent instead of downloading playit's (for testing) |
+| `PLAYIT_API` | `https://api.playit.gg` | Where the panel talks to playit.gg (for testing) |
 | `DNS_ANSWER_INTERNET` | `false` | Older setting: always answer the featured names for consoles on the internet (with `PUBLIC_IP`). The **Friends on Xbox, PlayStation and Switch** switch does this now |
 | `CONNECTION` | `both` | `raknet`, `nethernet` or `both` |
 | `NETHERNET_NAMES` | empty | With `both`, offer NetherNet only for these names |

@@ -34,6 +34,8 @@ no Xbox account. Never use that setting outside testing.
 | `internal/servers` | Server manager: install, run, update and back up game servers |
 | `internal/web` | Web panel: API, sign-in and the page (`static/`) |
 | `internal/serverlist` | Built-in DNS and the console server list |
+| `internal/outside` | Friends outside the house: internet address, UPnP and port forwards |
+| `internal/playit` | playit.gg: linking an account, its agent and tunnels |
 | `tools/fakeconsole` | Test client that pretends to be a console |
 | `docs/` | Design and test notes |
 | `deploy/` | Example files for running it |
