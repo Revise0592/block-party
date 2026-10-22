@@ -11,6 +11,11 @@
 - **Linking playit.gg says why it can't start**, next to the **Link
   playit.gg** button. Before, the new tab opened and closed again, and the
   reason was at the top of the page, out of sight.
+- **The backup before an update says how far it's got.** It copies the
+  whole server folder, which can take a long time on a big server, and the
+  console showed only "Backing up before the update…" until it was done.
+  Now it says how much there is to back up, and every 15 seconds how much
+  is done.
 
 ## 1.2.1
 

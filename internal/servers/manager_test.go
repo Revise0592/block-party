@@ -569,3 +569,28 @@ func TestHalfAppliedUpdateBlocksStart(t *testing.T) {
 	waitFor(t, s2, "running", state(StateRunning))
 	m2.StopAll()
 }
+
+func TestUpdateBackupSaysHowFarItsGot(t *testing.T) {
+	old := backupProgressEvery
+	backupProgressEvery = 0
+	defer func() { backupProgressEvery = old }()
+	dir, backups := t.TempDir(), t.TempDir()
+	for _, name := range []string{"bedrock_server", "worlds/a/level.dat", "worlds/b/level.dat"} {
+		p := filepath.Join(dir, name)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, bytes.Repeat([]byte("x"), 1_500_000), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var said []string
+	path, err := backup(context.Background(), dir, backups, "s", "before-update", 5, func(m string) { said = append(said, m) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	}
+	if len(said) < 2 || said[0] != "5 MB to back up." || !strings.HasPrefix(said[1], "Still backing up: ") {
+		t.Fatalf("said %q", said)
+	}
+}

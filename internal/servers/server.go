@@ -960,7 +960,7 @@ func (s *Server) update() error {
 				pruneBackups(s.m.backupsDir(s.meta.ID), s.meta.ID, "before-update", updateBackups)
 			}
 		} else {
-			path, err = backup(s.m.ctx, s.dir(), s.m.backupsDir(s.meta.ID), s.meta.ID, "before-update", updateBackups)
+			path, err = backup(s.m.ctx, s.dir(), s.m.backupsDir(s.meta.ID), s.meta.ID, "before-update", updateBackups, s.say)
 		}
 		if err != nil {
 			return fmt.Errorf("backup failed, so nothing was changed: %w", err)

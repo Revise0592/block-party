@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	neturl "net/url"
 	"os"
@@ -303,11 +304,16 @@ func copyFile(src, dst string, mode os.FileMode) error {
 }
 
 // backup writes a .tar.gz of the server folder and keeps the newest keep
-// backups of the same kind.
-func backup(ctx context.Context, dir, backupDir, id, kind string, keep int) (string, error) {
+// backups of the same kind. A big folder takes a while, so it says how far
+// it's got every so often.
+func backup(ctx context.Context, dir, backupDir, id, kind string, keep int, say func(string)) (string, error) {
 	if err := os.MkdirAll(backupDir, 0o755); err != nil {
 		return "", err
 	}
+	total := folderSize(dir)
+	say(sizeText(total) + " to back up.")
+	var done int64
+	lastSaid := time.Now()
 	name := fmt.Sprintf("%s-%s-%s.tar.gz", id, time.Now().Format("20060102-150405"), kind)
 	path := filepath.Join(backupDir, name)
 	f, err := os.Create(path + ".partial")
@@ -363,6 +369,11 @@ func backup(ctx context.Context, dir, backupDir, id, kind string, keep int) (str
 			return nil
 		}
 		_, err = io.CopyN(tw, in, hdr.Size)
+		done += hdr.Size
+		if time.Since(lastSaid) >= backupProgressEvery && total > 0 {
+			lastSaid = time.Now()
+			say(fmt.Sprintf("Still backing up: %d%% (%s of %s)…", min(done*100/total, 99), sizeText(done), sizeText(total)))
+		}
 		return err
 	})
 	for _, c := range []io.Closer{tw, gz, f} {
@@ -379,6 +390,32 @@ func backup(ctx context.Context, dir, backupDir, id, kind string, keep int) (str
 	}
 	pruneBackups(backupDir, id, kind, keep)
 	return path, nil
+}
+
+// backupProgressEvery is how often a backup says how far it's got.
+var backupProgressEvery = 15 * time.Second
+
+// folderSize adds up the regular files in a folder (what backup copies).
+func folderSize(dir string) int64 {
+	var n int64
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || !d.Type().IsRegular() {
+			return nil
+		}
+		if info, err := d.Info(); err == nil {
+			n += info.Size()
+		}
+		return nil
+	})
+	return n
+}
+
+// sizeText is a size for people: "850 MB", "2.4 GB".
+func sizeText(n int64) string {
+	if n >= 1e9 {
+		return fmt.Sprintf("%.1f GB", float64(n)/1e9)
+	}
+	return fmt.Sprintf("%d MB", (n+5e5)/1e6)
 }
 
 // pruneBackups keeps the newest keep backups of a kind. Newest by the file's
