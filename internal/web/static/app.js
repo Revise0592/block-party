@@ -2393,7 +2393,10 @@ async function linkPlayit(ev) {
     showOutsideError(null);
   } catch (err) {
     if (tab) tab.close();
-    showOutsideError(err);
+    // Next to the button, where it's seen (the page's own error is at the top).
+    note.textContent = `Couldn't start linking: ${err.message}`;
+    note.className = "small warn";
+    note.hidden = false;
     b.disabled = false;
     return;
   }
