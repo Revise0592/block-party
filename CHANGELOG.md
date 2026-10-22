@@ -8,6 +8,9 @@
   list after a restart. Every server's picture also shows in the panel's
   server list and at the top of its page. Bedrock and Hytale servers can't
   show one in the game, so for them it's only in the panel.
+- **Linking playit.gg says why it can't start**, next to the **Link
+  playit.gg** button. Before, the new tab opened and closed again, and the
+  reason was at the top of the page, out of sight.
 
 ## 1.2.1
 
